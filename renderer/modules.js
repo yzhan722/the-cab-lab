@@ -6,6 +6,11 @@ import { generateSmallCabinet } from "./gen/smallCabinet.js";
 import { generateBedroom } from "./gen/bedroom.js";
 import { generateBedBox, BED_BOX_DEFAULT_HEIGHT, BED_BOX_MIN } from "./gen/bedBox.js";
 import { generateOverheadCabinet, generateOHCSvgPreview } from "./gen/overheadCabinet.js";
+import { generateGeneralTallCabinet } from "./gen/generalTall.js";
+import { generateKitchenCabinetGeometry } from "./gen/kitchen.js";
+import { generateLoungeGeometry } from "./gen/lounge.js";
+import { displayGeneralTall, displayKitchen, displayLounge } from "./displayBoards.js";
+export { isRailModule, MIGRATED_MODULE_IDS } from "./flags.js";
 import { clearHeightAt, maxClearHeight } from "./spaces.js";
 import { builtInFinish, builtInStock, cabinetColor, thickness } from "./materials.js";
 
@@ -407,11 +412,322 @@ const overheadCabinet = {
   ],
 };
 
+/**
+ * General tall: Fusion 89bedb2 stacking (bottom system → zones + Zi → top system).
+ * Zones in params are bottom → top. Fridge is a zone, not a separate module.
+ * Cab Lab OHC is not replaced; this is the floor-standing tall unit.
+ */
+function kitchenInteriorH(params) {
+  const g = params.globalSettings || {};
+  return round1((g.height || 0) - (g.bottomClearanceHeight || 0) - (g.materialThickness || 0));
+}
+
+const generalTallCabinet = {
+  id: "generalTallCabinet",
+  label: "Tall",
+  sub: "general tall",
+  panel: "tall",
+  defaultSize: { W: 600, D: 584, H: 2000 },
+  minSize: { W: 300, D: 250, H: 600 },
+
+  defaults(W, D, H, materials) {
+    const { finish, stock } = materialsOf(materials);
+    const cpt = thickness(stock, "carcass");
+    const color = cabinetColor(finish);
+    const fpt = thickness(stock, "door");
+    const zones = [
+      { id: "zone-1", type: "side_door", height: 600 },
+      { id: "zone-2", type: "drawer", height: 300 },
+      { id: "zone-3", type: "double_door", height: 945, verticalDivider: true },
+    ];
+    const rawH = 2000;
+    const next = {
+      cabinetWidth: W,
+      cabinetDepth: D,
+      cabinetHeight: H,
+      panelThickness: cpt,
+      frontFaceAllowance: fpt,
+      doorPanelThickness: fpt,
+      frontClearance: 2.5,
+      sideClearance: 3,
+      carcassColor: color.carcassColor,
+      carcassColorName: color.carcassColorName,
+      doorSeries: color.doorSeries,
+      doorColor: color.doorColor,
+      doorColorName: color.doorColorName,
+      colorSlot: color.colorSlot,
+      topSystem: { style: "style_1", frontRailHeight: 40 },
+      bottomSystem: { style: "style_1", frontRailHeight: 53 },
+      avoidance: { enabled: false, depth: 200, height: 400 },
+      zones: H === rawH ? zones : fitZones(zones, round1(zones.reduce((s, z) => s + z.height, 0) + (H - rawH))),
+    };
+    return next;
+  },
+
+  generate(params) {
+    return displayGeneralTall(generateGeneralTallCabinet(params));
+  },
+
+  envelope(params) {
+    return { W: params.cabinetWidth, D: params.cabinetDepth, H: params.cabinetHeight };
+  },
+
+  setEnvelope(params, { W, D, H }) {
+    const next = { ...params };
+    if (W != null) next.cabinetWidth = round1(W);
+    if (D != null) next.cabinetDepth = round1(D);
+    if (H != null && H !== params.cabinetHeight) {
+      next.cabinetHeight = round1(H);
+      const sum = (params.zones || []).reduce((s, z) => s + z.height, 0);
+      next.zones = fitZones(params.zones || [], round1(sum + (next.cabinetHeight - params.cabinetHeight)));
+    }
+    return next;
+  },
+
+  dividers(params, result) {
+    const items = (result?.stacking?.items || []).filter((i) => i.type === "functional_zone");
+    const out = [];
+    for (let i = 0; i < items.length - 1; i += 1) {
+      const a = items[i];
+      const b = items[i + 1];
+      out.push({
+        index: i,
+        axis: "z",
+        pos: a.z1,
+        min: a.z0 + MIN_ZONE_HEIGHT,
+        max: b.z1 - MIN_ZONE_HEIGHT,
+      });
+    }
+    return out;
+  },
+
+  setDivider(params, result, index, pos) {
+    const items = (result?.stacking?.items || []).filter((i) => i.type === "functional_zone");
+    const a = items[index];
+    const b = items[index + 1];
+    if (!a || !b) return params;
+    const z = Math.max(a.z0 + MIN_ZONE_HEIGHT, Math.min(b.z1 - MIN_ZONE_HEIGHT, Math.round(pos)));
+    const delta = z - a.z1;
+    const nextZones = (params.zones || []).map((zn) => ({ ...zn }));
+    if (!nextZones[index] || !nextZones[index + 1]) return params;
+    nextZones[index].height = round1(nextZones[index].height + delta);
+    nextZones[index + 1].height = round1(nextZones[index + 1].height - delta);
+    if (nextZones[index].height < MIN_ZONE_HEIGHT || nextZones[index + 1].height < MIN_ZONE_HEIGHT) return params;
+    return { ...params, zones: nextZones };
+  },
+
+  zoneTypes: [
+    { id: "side_door", label: "Side door" },
+    { id: "left_side_door", label: "Door (hinge left)" },
+    { id: "right_side_door", label: "Door (hinge right)" },
+    { id: "double_door", label: "Double door" },
+    { id: "drawer", label: "Drawer" },
+    { id: "open_space", label: "Open" },
+    { id: "open_appliance", label: "Appliance opening" },
+    { id: "fridge", label: "Fridge" },
+    { id: "top_flap", label: "Top flap" },
+    { id: "bottom_flap", label: "Bottom flap" },
+    { id: "blank_panel", label: "Blank panel" },
+  ],
+};
+
+/**
+ * Kitchen base run: Fusion columns along W, zones stacked in each column.
+ * V-panel machining prefs stay on params (manufacturing, not envelope).
+ */
+const kitchenCabinet = {
+  id: "kitchenCabinet",
+  label: "Base",
+  sub: "kitchen run",
+  panel: "kitchen",
+  defaultSize: { W: 800, D: 560, H: 720 },
+  minSize: { W: 300, D: 250, H: 400 },
+
+  defaults(W, D, H, materials) {
+    const { finish, stock } = materialsOf(materials);
+    const cpt = thickness(stock, "carcass");
+    const color = cabinetColor(finish);
+    const kick = 100;
+    const interior = Math.max(MIN_ZONE_HEIGHT, round1(H - kick - cpt));
+    return {
+      carcassColor: color.carcassColor,
+      carcassColorName: color.carcassColorName,
+      doorSeries: color.doorSeries,
+      doorColor: color.doorColor,
+      doorColorName: color.doorColorName,
+      colorSlot: color.colorSlot,
+      globalSettings: {
+        length: W,
+        depth: D,
+        height: H,
+        materialThickness: cpt,
+        frontThickness: thickness(stock, "door"),
+        bottomClearanceHeight: kick,
+        bottomClearanceStyle: "style_1",
+      },
+      columns: [
+        {
+          id: "col-1",
+          width: W,
+          columnType: "left_door",
+          zones: [{ id: "zone-1", height: interior, zoneType: "left_door" }],
+        },
+      ],
+      wheelAvoidances: [],
+      vPanelMachiningPreferences: [],
+    };
+  },
+
+  generate(params) {
+    return displayKitchen(generateKitchenCabinetGeometry(params));
+  },
+
+  envelope(params) {
+    const g = params.globalSettings || {};
+    return { W: g.length, D: g.depth, H: g.height };
+  },
+
+  setEnvelope(params, { W, D, H }) {
+    const g = { ...(params.globalSettings || {}) };
+    let columns = (params.columns || []).map((c) => ({ ...c, zones: (c.zones || []).map((z) => ({ ...z })) }));
+    if (W != null) {
+      g.length = round1(W);
+      columns = fitZoneWidths(columns, g.length);
+    }
+    if (D != null) g.depth = round1(D);
+    if (H != null && H !== g.height) {
+      g.height = round1(H);
+      const interior = kitchenInteriorH({ ...params, globalSettings: g });
+      columns = columns.map((c) => ({ ...c, zones: fitZones(c.zones || [], Math.max(MIN_ZONE_HEIGHT, interior)) }));
+    }
+    return { ...params, globalSettings: g, columns };
+  },
+
+  dividers(params) {
+    const cols = params.columns || [];
+    const out = [];
+    let x = 0;
+    for (let i = 0; i < cols.length - 1; i += 1) {
+      x = round1(x + cols[i].width);
+      out.push({
+        index: i,
+        axis: "x",
+        pos: x,
+        min: x - cols[i].width + MIN_ZONE_WIDTH,
+        max: x + cols[i + 1].width - MIN_ZONE_WIDTH,
+      });
+    }
+    return out;
+  },
+
+  setDivider(params, result, index, pos) {
+    const columns = (params.columns || []).map((c) => ({ ...c }));
+    const left = columns[index];
+    const right = columns[index + 1];
+    if (!left || !right) return params;
+    const x0 = columns.slice(0, index).reduce((s, c) => s + c.width, 0);
+    const total = round1(left.width + right.width);
+    const x = Math.max(x0 + MIN_ZONE_WIDTH, Math.min(x0 + total - MIN_ZONE_WIDTH, Math.round(pos)));
+    left.width = round1(x - x0);
+    right.width = round1(total - left.width);
+    return { ...params, columns };
+  },
+
+  zoneTypes: [
+    { id: "left_door", label: "Door (hinge left)" },
+    { id: "right_door", label: "Door (hinge right)" },
+    { id: "double_door", label: "Double door" },
+    { id: "drawer", label: "Drawer" },
+    { id: "open", label: "Open" },
+    { id: "down_flap", label: "Down flap" },
+    { id: "stove", label: "Stove" },
+    { id: "custom", label: "Custom" },
+  ],
+};
+
+function loungeEnvelope(params) {
+  const style = params.style || "I_SHAPE";
+  const H = params.height;
+  if (style === "I_SHAPE") return { W: params.mainWidth, D: params.mainDepth, H };
+  if (style === "PARALLEL" || style === "U_SHAPE") return { W: params.totalWidth, D: params.depth, H };
+  return { W: params.mainWidth, D: Math.max(params.mainDepth || 0, params.lDepth || 0), H };
+}
+
+const loungeGenerator = {
+  id: "loungeGenerator",
+  label: "Lounge",
+  sub: "L / I layouts",
+  panel: "lounge",
+  defaultSize: { W: 2000, D: 600, H: 420 },
+  minSize: { W: 800, D: 400, H: 200 },
+
+  defaults(W, D, H, materials) {
+    const { finish, stock } = materialsOf(materials);
+    const color = cabinetColor(finish);
+    const ppt = thickness(stock, "partition") || thickness(stock, "carcass");
+    return {
+      style: "I_SHAPE",
+      height: H,
+      partitionPanelThickness: ppt,
+      wheelAvoidanceEnabled: false,
+      mainWidth: W,
+      mainDepth: D,
+      lWidth: 1600,
+      lDepth: Math.max(D, 800),
+      lPosition: "RIGHT",
+      topLidEnabled: true,
+      lFrontAccess: "NONE",
+      totalWidth: Math.max(W, 4000),
+      singleLoungeWidth: 1500,
+      depth: Math.max(D, 800),
+      avoidanceDepth: 300,
+      avoidanceHeight: 250,
+      hasMiddleCabinet: false,
+      carcassColor: color.carcassColor,
+      carcassColorName: color.carcassColorName,
+      doorSeries: color.doorSeries,
+      doorColor: color.doorColor,
+      doorColorName: color.doorColorName,
+      colorSlot: color.colorSlot,
+    };
+  },
+
+  generate(params) {
+    return displayLounge(generateLoungeGeometry(params));
+  },
+
+  envelope: loungeEnvelope,
+
+  setEnvelope(params, { W, D, H }) {
+    const next = { ...params };
+    const style = params.style || "I_SHAPE";
+    if (H != null) next.height = round1(H);
+    if (style === "I_SHAPE") {
+      if (W != null) next.mainWidth = round1(W);
+      if (D != null) next.mainDepth = round1(D);
+    } else if (style === "PARALLEL" || style === "U_SHAPE") {
+      if (W != null) next.totalWidth = round1(W);
+      if (D != null) next.depth = round1(D);
+    } else {
+      if (W != null) next.mainWidth = round1(W);
+      if (D != null) next.lDepth = round1(D);
+    }
+    return next;
+  },
+
+  dividers() { return []; },
+  setDivider(params) { return params; },
+  zoneTypes: [],
+};
+
 export const MODULES = {
   smallCabinet,
   overheadCabinet,
   bedroom,
   bedBox,
+  generalTallCabinet,
+  kitchenCabinet,
+  loungeGenerator,
 };
 
 /**
@@ -431,7 +747,7 @@ export const MODULE_GROUPS = [
   },
 ];
 
-/** Placeholders shown in the rail but not yet wired. */
+/** Placeholders shown in the rail but not yet wired. Tall / Base / Lounge stay planned until CABLAB_MIGRATED_GENERATORS=1. */
 export const PLANNED_MODULES = [
   { id: "generalTallCabinet", label: "Tall", sub: "general tall" },
   { id: "kitchenCabinet", label: "Base", sub: "kitchen run" },

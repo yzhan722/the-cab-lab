@@ -312,6 +312,19 @@ button:disabled { cursor: default; opacity: 0.45; }
 .field input:disabled { color: var(--text-2); }
 .field.readonly input { color: var(--text-2); border-style: dashed; cursor: default; }
 .field input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.field select {
+  height: 24px;
+  padding: 0 4px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  font: inherit;
+  min-width: 0;
+}
+.field select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.field.check { grid-template-columns: 1fr 24px; }
+.field.check input { accent-color: var(--accent); width: 16px; height: 16px; justify-self: end; }
 .panel-foot {
   margin-top: auto;
   padding: 10px 14px;

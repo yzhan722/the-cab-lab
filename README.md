@@ -6,9 +6,10 @@ Workflow: **step 1 define the space** (Box, or Vehicle = box rear + side-profile
 The box *is* the generator's outer size. Pull its faces to change W / D / H, drag the orange bars to move
 zone boundaries, edit details in the right panel. Boards are always regenerated from `job.json`, never edited.
 
-Current state: Small cabinet and Overhead cabinet wired end to end (place, move, rotate, resize, zones, checks, board table, save / load, undo).
-Bedroom (the vehicle's nose slab, for now one solid volume) is wired with its own placement flow. Other modules are
-listed but not wired yet.
+Current state: Small, Overhead, Bedroom body and Bed Box are wired. Tall, kitchen Base and Lounge
+generators are copied from Fusion `89bedb2` and produce boards when placed; their rail entries stay
+**planned** unless you launch with `CABLAB_MIGRATED_GENERATORS=1`. U-overhead is still unwired.
+Cab Lab Overhead is **not** replaced by the older Fusion pin (it already has LED groove and rangehood).
 
 ## Run
 
@@ -24,13 +25,22 @@ After that, use the **The Cab Lab** desktop shortcut, or:
 npm start
 ```
 
+To place Tall / Base / Lounge from the rail:
+
+```
+CABLAB_MIGRATED_GENERATORS=1 npm start
+```
+
+On Linux, if Chrome sandbox is not setuid, add `--no-sandbox` to the Electron invocation.
+
 `npm start` also rebuilds `renderer/gen/*.js` from `generators/`. The bundles are committed so the
 desktop shortcut works without a build step; run `npm run build:generators` after changing a generator.
+Generator unit + oracle tests: `npm run test:generators`.
 
 ## Layout
 
 - `main.js` — Electron window, open / save dialogs, DXF open, `settings.json` read / atomic write (IPC)
-- `preload.js` — exposes `window.cablab.openJob / saveJob / openDxf / readSettings / writeSettings`
+- `preload.js` — exposes `window.cablab.openJob / saveJob / openDxf / readSettings / writeSettings` and `flags.migratedGenerators`
 - `renderer/space.js` — scene, camera, grid, axes, room (walls and roof follow the resolved profile), picking helpers
 - `renderer/job.js` — `job.json` in memory, undo / redo snapshots, generator result cache; `finish` + `stock` are the job cabinet catalogue
 - `renderer/materials.js` — carcass/partition colour (White Stipple), door card (Acrylic / HPL, one or two colours), board stocks (carcass 15 / partition 18 / door 16); new cabinets copy these into params
@@ -47,7 +57,7 @@ desktop shortcut works without a build step; run `npm run build:generators` afte
 - `renderer/hud.js` — cursor tooltip
 - `renderer/panel.js` — right panel (space or selected cabinet) and drawer tables
 - `renderer/ui.js` — shell wiring
-- `generators/` — Cab Lab's own cabinet generators (TypeScript). Independent of the Fusion plugin.
+- `generators/` — Cab Lab's own cabinet generators (TypeScript). Small / OHC / Bedroom / Bed Box are Cab Lab-native. Tall / kitchen / lounge are Fusion `89bedb2` copies. Test-only Fusion oracle: `generators/test/reference-fusion/` (never imported from `renderer/`).
 - `renderer/gen/` — generated ESM bundles of `generators/*/generator.ts` (do not edit)
 - `build-generators.js` — esbuild script producing `renderer/gen`
 - `ensure-electron.js` — repairs a missing `electron.exe`

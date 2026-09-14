@@ -46,6 +46,19 @@ function numField(label, value, onCommit, opts = {}) {
   return el("label", { class: "field" }, [el("span", { text: label }), input]);
 }
 
+function selectField(label, value, onCommit, options) {
+  const sel = el("select", {}, options.map((o) => el("option", { value: o.id, text: o.label, selected: o.id === value })));
+  sel.addEventListener("change", () => { onCommit(sel.value); sel.blur(); });
+  return el("label", { class: "field" }, [el("span", { text: label }), sel]);
+}
+
+function checkField(label, value, onCommit) {
+  const input = el("input", { type: "checkbox" });
+  input.checked = !!value;
+  input.addEventListener("change", () => onCommit(input.checked));
+  return el("label", { class: "field check" }, [el("span", { text: label }), input]);
+}
+
 function section(title, children) {
   return el("div", { class: "panel-section" }, [el("div", { class: "sec-title", text: title }), ...children]);
 }
@@ -353,7 +366,197 @@ function renderOverhead(cab, mod, result, shared) {
   ].filter(Boolean));
 }
 
-// --- cabinet ---------------------------------------------------------------------
+// --- kitchen / lounge (Fusion-migrated; first-pass editors) ---------------------
+
+function renderKitchen(cab, mod, result, { checks, remove }) {
+  const p = cab.params;
+  const g = p.globalSettings || {};
+  const env = mod.envelope(p);
+  const columns = p.columns || [];
+  const interior = Math.round((g.height - (g.bottomClearanceHeight || 0) - (g.materialThickness || 0)) * 10) / 10;
+  const setEnv = (k) => (v) => job.setParams(cab.id, mod.setEnvelope(p, { [k]: Math.max(mod.minSize[k], v) }));
+  const setG = (k, min = 0) => (v) => job.setParams(cab.id, { ...p, globalSettings: { ...g, [k]: Math.max(min, v) } });
+  const setPose = (k) => (v) => job.setPose(cab.id, { [k]: v });
+
+  const columnBlocks = columns.map((col, ci) => {
+    const zones = col.zones || [];
+    const zoneRows = zones.map((z, i) => {
+      const type = el("select", {
+        onchange: (e) => {
+          const next = columns.map((c, k) => (k !== ci ? c : { ...c, zones: zones.map((zz, j) => (j === i ? { ...zz, zoneType: e.target.value } : { ...zz })) }));
+          e.target.blur();
+          job.setParams(cab.id, { ...p, columns: next });
+        },
+      }, mod.zoneTypes.map((t) => el("option", { value: t.id, text: t.label, selected: t.id === z.zoneType })));
+      const height = el("input", { type: "number", value: z.height, step: 1, min: 0 });
+      height.addEventListener("change", () => {
+        const v = Number(height.value);
+        if (!Number.isFinite(v) || v <= 0) { height.value = z.height; return; }
+        const nextZ = zones.map((zz) => ({ ...zz }));
+        const j = i < nextZ.length - 1 ? i + 1 : i - 1;
+        const delta = v - nextZ[i].height;
+        if (j >= 0 && nextZ[j].height - delta >= MIN_ZONE_HEIGHT) {
+          nextZ[i].height = v;
+          nextZ[j].height = Math.round((nextZ[j].height - delta) * 10) / 10;
+          job.setParams(cab.id, { ...p, columns: columns.map((c, k) => (k !== ci ? c : { ...c, zones: nextZ })) });
+        } else {
+          height.value = z.height;
+        }
+      });
+      const rmz = el("button", {
+        class: "icon", title: "Remove zone", text: "×", disabled: zones.length <= 1,
+        onclick: () => {
+          const nextZ = fitZones(zones.filter((_, k) => k !== i), interior);
+          job.setParams(cab.id, { ...p, columns: columns.map((c, k) => (k !== ci ? c : { ...c, zones: nextZ })) });
+        },
+      });
+      return el("div", { class: "zone-row" }, [el("span", { class: "zone-idx", text: String(i + 1) }), type, height, rmz]);
+    });
+    const addZone = el("button", { class: "tb wide", text: "+ Zone", onclick: () => {
+      const nextZ = zones.map((zz) => ({ ...zz }));
+      const tallest = nextZ.reduce((a, b) => (b.height > a.height ? b : a), nextZ[0]);
+      const take = Math.min(150, tallest.height - MIN_ZONE_HEIGHT);
+      const zone = { id: `zone-${Date.now().toString(36)}`, zoneType: "drawer", height: take >= MIN_ZONE_HEIGHT ? take : MIN_ZONE_HEIGHT };
+      if (take >= MIN_ZONE_HEIGHT) {
+        tallest.height = Math.round((tallest.height - take) * 10) / 10;
+        nextZ.push(zone);
+        job.setParams(cab.id, { ...p, columns: columns.map((c, k) => (k !== ci ? c : { ...c, zones: nextZ })) });
+      } else {
+        nextZ.push(zone);
+        job.setParams(cab.id, { ...p, columns: columns.map((c, k) => (k !== ci ? c : { ...c, zones: fitZones(nextZ, interior) })) });
+      }
+    } });
+    const colType = el("select", {
+      onchange: (e) => {
+        job.setParams(cab.id, { ...p, columns: columns.map((c, k) => (k !== ci ? c : { ...c, columnType: e.target.value })) });
+        e.target.blur();
+      },
+    }, mod.zoneTypes.map((t) => el("option", { value: t.id, text: t.label, selected: t.id === col.columnType })));
+    const width = numField("Width (mm)", col.width, (v) => {
+      const next = columns.map((c) => ({ ...c }));
+      const neighbour = ci < next.length - 1 ? ci + 1 : ci - 1;
+      const delta = v - next[ci].width;
+      if (neighbour >= 0 && next[neighbour].width - delta >= MIN_ZONE_WIDTH && v >= MIN_ZONE_WIDTH) {
+        next[ci].width = v;
+        next[neighbour].width = Math.round((next[neighbour].width - delta) * 10) / 10;
+        job.setParams(cab.id, { ...p, columns: next });
+      }
+    }, { step: 10, min: MIN_ZONE_WIDTH });
+    const rmCol = el("button", {
+      class: "tb", text: "Remove column", disabled: columns.length <= 1,
+      onclick: () => job.setParams(cab.id, { ...p, columns: fitZoneWidths(columns.filter((_, k) => k !== ci), g.length) }),
+    });
+    return section(`Column ${ci + 1}`, [
+      el("label", { class: "field" }, [el("span", { text: "Type" }), colType]),
+      width,
+      el("div", { class: "zone-list" }, zoneRows),
+      addZone,
+      rmCol,
+    ]);
+  });
+
+  const addCol = el("button", { class: "tb wide", text: "+ Add column", onclick: () => {
+    const next = columns.map((c) => ({ ...c }));
+    const last = next[next.length - 1];
+    const take = Math.min(300, last.width - MIN_ZONE_WIDTH);
+    if (take < MIN_ZONE_WIDTH) return;
+    last.width = Math.round((last.width - take) * 10) / 10;
+    next.push({
+      id: `col-${Date.now().toString(36)}`,
+      width: take,
+      columnType: "drawer",
+      zones: [{ id: `zone-${Date.now().toString(36)}`, height: Math.max(MIN_ZONE_HEIGHT, interior), zoneType: "drawer" }],
+    });
+    job.setParams(cab.id, { ...p, columns: next });
+  } });
+
+  panel.replaceChildren(
+    el("div", { class: "panel-head" }, [
+      el("div", { class: "panel-title", text: `${mod.label} cabinet` }),
+      el("div", { class: "panel-sub", text: `${cab.id} · ${result?.boards?.length || 0} boards` }),
+    ]),
+    section("Outer size (= box)", [
+      numField("Width (mm)", env.W, setEnv("W")),
+      numField("Depth (mm)", env.D, setEnv("D")),
+      numField("Height (mm)", env.H, setEnv("H")),
+    ]),
+    section("Toe kick", [
+      numField("Clearance (mm)", g.bottomClearanceHeight ?? 100, setG("bottomClearanceHeight", 0)),
+      selectField("Style", g.bottomClearanceStyle || "style_1", (v) => job.setParams(cab.id, { ...p, globalSettings: { ...g, bottomClearanceStyle: v } }), [
+        { id: "style_1", label: "Style 1" },
+        { id: "style_2", label: "Style 2" },
+      ]),
+    ]),
+    ...columnBlocks,
+    addCol,
+    section("Position", [
+      numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
+      numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),
+      numField("Rotation (°)", cab.pose.rotZ || 0, (v) => job.setPose(cab.id, { rotZ: ((Math.round(v / 90) * 90) % 360 + 360) % 360 }), { step: 90, min: -1e6 }),
+    ]),
+    checks,
+    el("div", { class: "panel-foot" }, [remove]),
+  );
+}
+
+function renderLounge(cab, mod, result, { checks, remove }) {
+  const p = cab.params;
+  const env = mod.envelope(p);
+  const setEnv = (k) => (v) => job.setParams(cab.id, mod.setEnvelope(p, { [k]: Math.max(mod.minSize[k], v) }));
+  const setP = (k, min) => (v) => job.setParams(cab.id, { ...p, [k]: min == null ? v : Math.max(min, v) });
+  const setPose = (k) => (v) => job.setPose(cab.id, { [k]: v });
+  const styles = [
+    { id: "I_SHAPE", label: "I" },
+    { id: "L_SHAPE", label: "L" },
+    { id: "PARALLEL", label: "Parallel" },
+    { id: "U_SHAPE", label: "U (uses L geometry)" },
+  ];
+  const dimFields = [];
+  if (p.style === "PARALLEL" || p.style === "U_SHAPE") {
+    dimFields.push(numField("Total width (mm)", p.totalWidth, setP("totalWidth", mod.minSize.W)));
+    dimFields.push(numField("Depth (mm)", p.depth, setP("depth", mod.minSize.D)));
+    if (p.style === "PARALLEL") dimFields.push(numField("Each lounge (mm)", p.singleLoungeWidth, setP("singleLoungeWidth", 400)));
+  } else if (p.style === "L_SHAPE") {
+    dimFields.push(numField("Main width (mm)", p.mainWidth, setP("mainWidth", 400)));
+    dimFields.push(numField("Main depth (mm)", p.mainDepth, setP("mainDepth", 200)));
+    dimFields.push(numField("L width (mm)", p.lWidth, setP("lWidth", 400)));
+    dimFields.push(numField("L depth (mm)", p.lDepth, setP("lDepth", 400)));
+    dimFields.push(selectField("L position", p.lPosition || "RIGHT", (v) => job.setParams(cab.id, { ...p, lPosition: v }), [
+      { id: "LEFT", label: "Left" }, { id: "RIGHT", label: "Right" },
+    ]));
+    dimFields.push(selectField("L front access", p.lFrontAccess || "NONE", (v) => job.setParams(cab.id, { ...p, lFrontAccess: v }), [
+      { id: "NONE", label: "None" }, { id: "DRAWER", label: "Drawer" }, { id: "FLAP", label: "Flap" },
+    ]));
+  } else {
+    dimFields.push(numField("Length (mm)", p.mainWidth, setP("mainWidth", mod.minSize.W)));
+    dimFields.push(numField("Depth (mm)", p.mainDepth, setP("mainDepth", mod.minSize.D)));
+  }
+
+  panel.replaceChildren(
+    el("div", { class: "panel-head" }, [
+      el("div", { class: "panel-title", text: `${mod.label}` }),
+      el("div", { class: "panel-sub", text: `${cab.id} · ${result?.boards?.length || 0} boards` }),
+    ]),
+    section("Layout", [
+      selectField("Style", p.style || "I_SHAPE", (v) => job.setParams(cab.id, { ...p, style: v }), styles),
+      numField("Height (mm)", p.height, setEnv("H")),
+      checkField("Top lids", p.topLidEnabled !== false, (on) => job.setParams(cab.id, { ...p, topLidEnabled: on })),
+      checkField("Wheel avoidance", !!p.wheelAvoidanceEnabled, (on) => job.setParams(cab.id, { ...p, wheelAvoidanceEnabled: on })),
+      ...(p.wheelAvoidanceEnabled ? [
+        numField("Avoidance depth (mm)", p.avoidanceDepth ?? 300, setP("avoidanceDepth", 0)),
+        numField("Avoidance height (mm)", p.avoidanceHeight ?? 250, setP("avoidanceHeight", 0)),
+      ] : []),
+    ]),
+    section("Footprint", dimFields),
+    section("Position", [
+      numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
+      numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),
+      numField("Rotation (°)", cab.pose.rotZ || 0, (v) => job.setPose(cab.id, { rotZ: ((Math.round(v / 90) * 90) % 360 + 360) % 360 }), { step: 90, min: -1e6 }),
+    ]),
+    checks,
+    el("div", { class: "panel-foot" }, [remove]),
+  );
+}
 
 function renderCabinet(cab) {
   const mod = getModule(cab.moduleId);
@@ -361,7 +564,9 @@ function renderCabinet(cab) {
   const env = mod.envelope(cab.params);
   const p = cab.params;
   const cpt = p.panelThickness ?? thickness(job.getStock(), "carcass");
-  const interior = Math.round((env.H - 2 * cpt) * 10) / 10;
+  const interior = mod.panel === "tall" && result?.stacking?.functionalZoneTotal
+    ? Math.round(result.stacking.functionalZoneTotal * 10) / 10
+    : Math.round((env.H - 2 * cpt) * 10) / 10;
 
   const setEnv = (k) => (v) => job.setParams(cab.id, mod.setEnvelope(p, { [k]: Math.max(mod.minSize[k], v) }));
   const setParam = (k, min = 0) => (v) => job.setParams(cab.id, { ...p, [k]: Math.max(min, v) });
@@ -483,6 +688,44 @@ function renderCabinet(cab) {
     fillDrawer(result, errors, warnings);
     return;
   }
+  if (mod.panel === "kitchen") {
+    renderKitchen(cab, mod, result, { checks, remove });
+    fillDrawer(result, errors, warnings);
+    return;
+  }
+  if (mod.panel === "lounge") {
+    renderLounge(cab, mod, result, { checks, remove });
+    fillDrawer(result, errors, warnings);
+    return;
+  }
+
+  const tallExtras = mod.panel === "tall" ? [
+    section("Top / bottom", [
+      selectField("Top", p.topSystem?.style || "style_1", (v) => {
+        const topSystem = { ...(p.topSystem || {}), style: v };
+        if (v === "style_2" && !(topSystem.height >= 60)) topSystem.height = 60;
+        job.setParams(cab.id, { ...p, topSystem });
+      }, [{ id: "style_1", label: "Style 1 (rail)" }, { id: "style_2", label: "Style 2 (solid)" }]),
+      p.topSystem?.style === "style_2"
+        ? numField("Top height (mm)", p.topSystem.height ?? 60, (v) => job.setParams(cab.id, { ...p, topSystem: { ...p.topSystem, height: Math.max(60, v) } }))
+        : null,
+      selectField("Bottom", p.bottomSystem?.style || "style_1", (v) => {
+        const bottomSystem = { ...(p.bottomSystem || {}), style: v };
+        if (v === "style_2" && !(bottomSystem.height >= 60)) bottomSystem.height = 60;
+        job.setParams(cab.id, { ...p, bottomSystem });
+      }, [{ id: "style_1", label: "Style 1 (rail)" }, { id: "style_2", label: "Style 2 (solid)" }]),
+      p.bottomSystem?.style === "style_2"
+        ? numField("Bottom height (mm)", p.bottomSystem.height ?? 60, (v) => job.setParams(cab.id, { ...p, bottomSystem: { ...p.bottomSystem, height: Math.max(60, v) } }))
+        : null,
+    ].filter(Boolean)),
+    section("Avoidance", [
+      checkField("Enabled", !!p.avoidance?.enabled, (on) => job.setParams(cab.id, { ...p, avoidance: { depth: 200, height: 400, ...(p.avoidance || {}), enabled: on } })),
+      ...(p.avoidance?.enabled ? [
+        numField("Depth (mm)", p.avoidance.depth ?? 200, (v) => job.setParams(cab.id, { ...p, avoidance: { ...p.avoidance, depth: Math.max(0, v) } })),
+        numField("Height (mm)", p.avoidance.height ?? 400, (v) => job.setParams(cab.id, { ...p, avoidance: { ...p.avoidance, height: Math.max(0, v) } })),
+      ] : []),
+    ]),
+  ] : [];
 
   const boxChildren = [
     el("div", { class: "panel-head" }, [
@@ -494,10 +737,11 @@ function renderCabinet(cab) {
       numField("Depth (mm)", env.D, setEnv("D")),
       numField("Height (mm)", env.H, setEnv("H")),
     ]),
-    section(`Zones · top → bottom · interior ${interior} mm`, [
+    section(mod.panel === "tall" ? `Zones · bottom → top · ${interior} mm` : `Zones · top → bottom · interior ${interior} mm`, [
       el("div", { class: "zone-list" }, zoneRows),
       addZone,
     ]),
+    ...tallExtras,
     section("Position", [
       numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
       numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),

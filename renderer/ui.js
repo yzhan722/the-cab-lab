@@ -1,7 +1,7 @@
 // Shell wiring: top bar, module rail, drawer, status bar, file actions.
 import { setView, drawSpace, floorPointAt, canvas } from "./space.js";
 import * as job from "./job.js";
-import { MODULES, MODULE_GROUPS, PLANNED_MODULES } from "./modules.js";
+import { MODULES, MODULE_GROUPS, PLANNED_MODULES, isRailModule } from "./modules.js";
 import { syncCabinets, syncPlanes } from "./cabinets3d.js";
 import { armPlacement, disarm, onModeChange, getPlacingModule, getMode, startMove, startOrient, startPlane } from "./interact.js";
 import { renderPanel } from "./panel.js";
@@ -33,11 +33,11 @@ function moduleButton(mod, label = mod.label, sub = mod.sub) {
   });
   return btn;
 }
-function plannedButton(label, sub) {
+function plannedButton(label, sub, title = "Not wired yet") {
   const btn = document.createElement("button");
   btn.className = "rail-item";
   btn.disabled = true;
-  btn.title = "Not wired yet";
+  btn.title = title;
   btn.innerHTML = `<span class="rail-name"></span><span class="rail-sub"></span>`;
   $(".rail-name", btn).textContent = label;
   $(".rail-sub", btn).textContent = sub;
@@ -45,6 +45,7 @@ function plannedButton(label, sub) {
 }
 
 for (const mod of Object.values(MODULES)) {
+  if (!isRailModule(mod.id)) continue;
   if (!grouped.has(mod.id)) list.append(moduleButton(mod));
 }
 
@@ -92,7 +93,10 @@ for (const group of MODULE_GROUPS) {
 }
 window.addEventListener("resize", closeFlyout);
 rail.addEventListener("scroll", closeFlyout);
-for (const mod of PLANNED_MODULES) list.append(plannedButton(mod.label, mod.sub));
+for (const mod of PLANNED_MODULES) {
+  if (MODULES[mod.id] && isRailModule(mod.id)) continue;
+  list.append(plannedButton(mod.label, mod.sub, MODULES[mod.id] ? "Set CABLAB_MIGRATED_GENERATORS=1 to enable" : "Not wired yet"));
+}
 $("[data-space]").addEventListener("click", () => {
   disarm();
   job.select(null);
