@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node ensure-electron.js && node build-generators.js && electron .",
     "build:generators": "node build-generators.js",
+    "test:generators": "node scripts/run-generator-tests.mjs",
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File create-desktop-shortcut.ps1"
   },
   "dependencies": {
