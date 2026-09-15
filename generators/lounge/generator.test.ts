@@ -254,4 +254,25 @@ testParallelLounge();
 testIShapeLounge();
 testIShapeLoungeWithAvoidance();
 testIShapeWarnings();
+
+function testUShapeThreeIRuns(): void {
+  const result = generateLoungeGeometry({
+    style: "U_SHAPE",
+    height: 420,
+    partitionPanelThickness: 18,
+    totalWidth: 2000,
+    depth: 1200,
+    mainDepth: 350,
+    topLidEnabled: true,
+  });
+  assert.equal(result.validation.errors.length, 0, result.validation.errors.join("; "));
+  assert.equal(result.meta.style, "U_SHAPE");
+  const prefixes = [...new Set(result.panels.map((p) => String(p.id).split(":")[0]))].sort();
+  assert.deepEqual(prefixes, ["back", "left", "right"]);
+  assert.ok(result.footprint.left);
+  assert.ok(result.footprint.back);
+  assert.ok(result.footprint.right);
+}
+
+testUShapeThreeIRuns();
 console.log("OK lounge generator tests");

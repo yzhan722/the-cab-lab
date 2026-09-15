@@ -291,8 +291,12 @@ const ghostEdges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxG
 ghostEdges.visible = false;
 scene.add(ghostEdges);
 
+/** Extra AABB ghosts for L / U / parallel lounge previews (the first box uses `ghost`). */
+const extraGhosts = [];
+
 /** Axis-aligned preview box from min corner (x0, y0, z0). `clamped` turns the outline orange. */
 export function showGhost(x0, y0, z0, W, D, H, { clamped = false } = {}) {
+  for (const g of extraGhosts) g.visible = false;
   for (const m of [ghost, ghostEdges]) {
     m.visible = true;
     m.scale.set(Math.max(W, 1), Math.max(D, 1), Math.max(H, 1));
@@ -373,8 +377,42 @@ export function hideAlignLines() {
 export function hideGhost() {
   ghost.visible = false;
   ghostEdges.visible = false;
+  for (const g of extraGhosts) g.visible = false;
   hideNoseGhost();
   hideWidthRect();
+}
+
+function makeGhostPair() {
+  const m = new THREE.Mesh(ghost.geometry, ghostMat);
+  m.visible = false;
+  scene.add(m);
+  const e = new THREE.LineSegments(ghostEdges.geometry, new THREE.LineBasicMaterial({ color: 0x4f86e0 }));
+  e.visible = false;
+  scene.add(e);
+  return [m, e];
+}
+function paintGhost(mesh, edges, x0, y0, z0, W, D, H, clamped) {
+  for (const m of [mesh, edges]) {
+    m.visible = true;
+    m.scale.set(Math.max(W, 1), Math.max(D, 1), Math.max(H, 1));
+    m.position.set(x0 + W / 2, y0 + D / 2, z0 + H / 2);
+  }
+  edges.material.color.setHex(clamped ? 0xf0a050 : 0x4f86e0);
+}
+
+/** One or more axis-aligned preview boxes. */
+export function showGhosts(boxes, { clamped = false } = {}) {
+  if (!boxes || !boxes.length) { hideGhost(); return; }
+  const first = boxes[0];
+  paintGhost(ghost, ghostEdges, first.x0, first.y0, first.z0 || 0, first.W, first.D, first.H, clamped);
+  while (extraGhosts.length < (boxes.length - 1) * 2) extraGhosts.push(...makeGhostPair());
+  for (let i = 1; i < boxes.length; i += 1) {
+    const b = boxes[i];
+    const m = extraGhosts[(i - 1) * 2];
+    const e = extraGhosts[(i - 1) * 2 + 1];
+    paintGhost(m, e, b.x0, b.y0, b.z0 || 0, b.W, b.D, b.H, clamped);
+  }
+  for (let i = (boxes.length - 1) * 2; i < extraGhosts.length; i += 1) extraGhosts[i].visible = false;
 }
 
 /**

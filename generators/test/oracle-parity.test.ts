@@ -75,7 +75,7 @@ function testKitchenBaseOracle(): void {
 }
 
 function testLoungeStylesOracle(): void {
-  for (const style of ["I_SHAPE", "L_SHAPE", "PARALLEL", "U_SHAPE"] as const) {
+  for (const style of ["I_SHAPE", "L_SHAPE", "PARALLEL"] as const) {
     const params = { ...defaultLoungeParams, style };
     const a = nativeLounge(params);
     const b = oracleLounge(params);

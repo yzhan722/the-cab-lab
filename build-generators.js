@@ -17,6 +17,8 @@ const ENTRIES = [
   { name: "generalTall", entry: path.join(MODULES_DIR, "generalTall", "generator.ts") },
   { name: "kitchen", entry: path.join(MODULES_DIR, "kitchen", "generator.ts") },
   { name: "lounge", entry: path.join(MODULES_DIR, "lounge", "generator.ts") },
+  { name: "uShapeOverhead", entry: path.join(MODULES_DIR, "uShapeOverhead", "generator.ts") },
+  { name: "bedSideTable", entry: path.join(MODULES_DIR, "bedSideTable", "generator.ts") },
 ];
 
 async function main() {

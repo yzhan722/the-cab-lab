@@ -43,14 +43,14 @@ Cab Lab 3D concatenates fronts + V-panels (YZ profile bbox) onto `boards`.
 
 ## loungeGenerator
 
-**In module:** `generator.ts`, `types.ts`, `relationshipDeclarations.ts`, `generator.test.ts` (L / I / PARALLEL).
+**In module:** `generator.ts`, `types.ts`, `relationshipDeclarations.ts`, `generator.test.ts` (L / I / PARALLEL / Cab Lab U).
 
 **Entry:** `generateLoungeGeometry(Partial<LoungeSettings>) → LoungeGeometryResult`
 `{ panels, openings, lids, footprint, validation, relationshipDeclarations }` (panels, not `boards`).
 
 Cab Lab 3D maps `panels` + `lids` through `placement` + `outer` in `renderer/displayBoards.js`.
 
-**Styles:** `L_SHAPE`, `I_SHAPE`, `PARALLEL`, `U_SHAPE`. `U_SHAPE` is typed; **the generator falls through to the L path** at this SHA (`SOURCE_AMBIGUITY`).
+**Styles:** `L_SHAPE`, `I_SHAPE`, `PARALLEL`, `U_SHAPE`. Fusion at this SHA still falls through `U_SHAPE` to L (`SOURCE_AMBIGUITY` in the oracle). Cab Lab native `U_SHAPE` composes three I-shape runs (`INTENTIONAL_DIVERGENCE`).
 
 ## Execution stamps
 

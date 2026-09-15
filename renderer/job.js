@@ -224,7 +224,7 @@ function makeId() {
   return id;
 }
 
-export function addCabinet(moduleId, pose, size) {
+export function addCabinet(moduleId, pose, size, extra = null) {
   pushHistory();
   const mod = getModule(moduleId);
   const s = { ...mod.defaultSize, ...size };
@@ -232,7 +232,9 @@ export function addCabinet(moduleId, pose, size) {
     id: makeId(),
     moduleId,
     pose: { x: 0, y: 0, z: 0, rotZ: 0, ...pose },
-    params: mod.defaults(s.W, s.D, s.H, { finish: job.finish, stock: job.stock }),
+    params: extra
+      ? { ...mod.defaults(s.W, s.D, s.H, { finish: job.finish, stock: job.stock }), ...extra }
+      : mod.defaults(s.W, s.D, s.H, { finish: job.finish, stock: job.stock }),
   };
   bindToSpace(cab);
   job.cabinets.push(cab);

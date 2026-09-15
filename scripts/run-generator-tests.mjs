@@ -16,6 +16,10 @@ const files = [
   "generators/lounge/generator.test.ts",
   "generators/test/first-pass.test.ts",
   "generators/test/oracle-parity.test.ts",
+  "generators/test/simulate-user-modules.test.ts",
+  "generators/test/panel-options.test.ts",
+  "generators/test/u-overhead.test.ts",
+  "generators/test/lounge-place.test.ts",
 ];
 
 let failed = 0;

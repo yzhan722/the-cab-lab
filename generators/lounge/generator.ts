@@ -615,10 +615,127 @@ function generateParallelLoungeGeometry(state: LoungeSettings): LoungeGeometryRe
   });
 }
 
+const U_LOUNGE_MIN_RUN = 200;
+const U_LOUNGE_MIN_LEN = 400;
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+/** Three I-runs inside a U bounding box. Mouth at local y = 0, back at depth. */
+export function resolveULoungeLayout(params: Partial<LoungeSettings>): {
+  W: number; D: number; run: number; leftLen: number; rightLen: number; backLen: number;
+} {
+  const W = round1(num(params.totalWidth, num(params.mainWidth, 2000)));
+  const D = round1(num(params.depth, 1200));
+  const want = Math.max(U_LOUNGE_MIN_RUN, round1(num(params.mainDepth, 600)));
+  const maxRun = Math.max(
+    U_LOUNGE_MIN_RUN,
+    Math.min(want, Math.floor((W - U_LOUNGE_MIN_LEN) / 2), Math.max(U_LOUNGE_MIN_RUN, D - U_LOUNGE_MIN_LEN)),
+  );
+  const run = Number.isFinite(maxRun) ? round1(maxRun) : U_LOUNGE_MIN_RUN;
+  return { W, D, run, leftLen: D, rightLen: D, backLen: round1(W - 2 * run) };
+}
+
+type MapPt = (x: number, y: number, z: number) => { x: number; y: number; z: number };
+
+function mapPlacement(pl: LoungePanel["placement"] | undefined, map: MapPt): LoungePanel["placement"] {
+  const p = pl || { x0: 0, x1: 0, y0: 0, y1: 0, z0: 0, z1: 0 };
+  const corners = [
+    [p.x0, p.y0, p.z0], [p.x1, p.y0, p.z0], [p.x0, p.y1, p.z0], [p.x1, p.y1, p.z0],
+    [p.x0, p.y0, p.z1], [p.x1, p.y0, p.z1], [p.x0, p.y1, p.z1], [p.x1, p.y1, p.z1],
+  ].map(([x, y, z]) => map(x, y, z));
+  const xs = corners.map((c) => c.x);
+  const ys = corners.map((c) => c.y);
+  const zs = corners.map((c) => c.z);
+  return {
+    x0: Math.min(...xs), x1: Math.max(...xs),
+    y0: Math.min(...ys), y1: Math.max(...ys),
+    z0: Math.min(...zs), z1: Math.max(...zs),
+  };
+}
+
+function mapLoungePart<T extends LoungePanel | LoungeLid>(item: T, prefix: string, map: MapPt): T {
+  return {
+    ...item,
+    id: `${prefix}:${item.id}`,
+    name: `${prefix} ${item.name || item.id}`,
+    placement: mapPlacement(item.placement, map),
+    outer: undefined,
+    opening: undefined,
+  };
+}
+
+/** Cab Lab U: three existing I-shape runs. Fusion at 89bedb2 still falls through to L. */
+function generateUShapeLoungeGeometry(state: LoungeSettings): LoungeGeometryResult {
+  const layout = resolveULoungeLayout(state);
+  const { W, D, run, leftLen, backLen, rightLen } = layout;
+  const errors: string[] = [];
+  if (W < 2 * U_LOUNGE_MIN_RUN + U_LOUNGE_MIN_LEN) errors.push(`U width must be at least ${2 * U_LOUNGE_MIN_RUN + U_LOUNGE_MIN_LEN} mm`);
+  if (D < U_LOUNGE_MIN_RUN + U_LOUNGE_MIN_LEN) errors.push(`U depth must be at least ${U_LOUNGE_MIN_RUN + U_LOUNGE_MIN_LEN} mm`);
+  if (backLen < U_LOUNGE_MIN_LEN) errors.push(`U back run ${backLen} mm is under ${U_LOUNGE_MIN_LEN} mm`);
+  const iBase: LoungeSettings = {
+    ...state,
+    style: "I_SHAPE",
+    wheelAvoidanceEnabled: false,
+    hasMiddleCabinet: false,
+  };
+  if (errors.length) {
+    return withRelationshipDeclarations({
+      meta: { module: "lounge", style: "U_SHAPE", phase: "u_shape_three_i_runs" },
+      state,
+      footprint: {
+        left: { x0: 0, x1: run, y0: 0, y1: D },
+        back: { x0: run, x1: W - run, y0: D - run, y1: D },
+        right: { x0: W - run, x1: W, y0: 0, y1: D },
+      },
+      panels: [],
+      openings: [],
+      lids: [],
+      validation: { warnings: [], errors },
+    });
+  }
+  const left = generateIShapeGeometry({ ...iBase, mainWidth: leftLen, mainDepth: run });
+  const back = generateIShapeGeometry({ ...iBase, mainWidth: backLen, mainDepth: run });
+  const right = generateIShapeGeometry({ ...iBase, mainWidth: rightLen, mainDepth: run });
+  const mapLeft: MapPt = (x, y, z) => ({ x: run - y, y: x, z });
+  const mapBack: MapPt = (x, y, z) => ({ x: run + x, y: D - run + y, z });
+  const mapRight: MapPt = (x, y, z) => ({ x: W - run + y, y: D - x, z });
+  const panels = [
+    ...left.panels.map((p) => mapLoungePart(p, "left", mapLeft)),
+    ...back.panels.map((p) => mapLoungePart(p, "back", mapBack)),
+    ...right.panels.map((p) => mapLoungePart(p, "right", mapRight)),
+  ];
+  const lids = [
+    ...left.lids.map((p) => mapLoungePart(p, "left", mapLeft)),
+    ...back.lids.map((p) => mapLoungePart(p, "back", mapBack)),
+    ...right.lids.map((p) => mapLoungePart(p, "right", mapRight)),
+  ];
+  const warnings = [
+    ...(left.validation.warnings || []).map((m) => `left: ${m}`),
+    ...(back.validation.warnings || []).map((m) => `back: ${m}`),
+    ...(right.validation.warnings || []).map((m) => `right: ${m}`),
+  ];
+  return withRelationshipDeclarations({
+    meta: { module: "lounge", style: "U_SHAPE", phase: "u_shape_three_i_runs" },
+    state,
+    footprint: {
+      left: { x0: 0, x1: run, y0: 0, y1: D },
+      back: { x0: run, x1: W - run, y0: D - run, y1: D },
+      right: { x0: W - run, x1: W, y0: 0, y1: D },
+    },
+    panels,
+    openings: [],
+    lids,
+    validation: { warnings, errors: [] },
+  });
+}
+
 export function generateLoungeGeometry(input: Partial<LoungeSettings>): LoungeGeometryResult {
   const state = normalizeSettings(input);
   if (state.style === "PARALLEL") return generateParallelLoungeGeometry(state);
   if (state.style === "I_SHAPE") return generateIShapeGeometry(state);
+  if (state.style === "U_SHAPE") return generateUShapeLoungeGeometry(state);
   const ppt = Math.max(1, state.partitionPanelThickness);
   const panelHeight = Math.max(0, state.height - ppt);
   const mainBounds = { x0: 0, x1: state.mainWidth, y0: 0, y1: state.mainDepth };

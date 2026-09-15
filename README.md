@@ -4,12 +4,12 @@ Cabinet CAD workspace. Metric (mm), Z up, right-handed. Electron + Three.js.
 
 Workflow: **step 1 define the space** (Box, or Vehicle = box rear + side-profile nose; Floor plan later) → pick a **module** on the left → drag its **box** on the floor.
 The box *is* the generator's outer size. Pull its faces to change W / D / H, drag the orange bars to move
-zone boundaries, edit details in the right panel. Boards are always regenerated from `job.json`, never edited.
+zone boundaries, or click / drag the **2D schematic** in the right panel. Boards are always regenerated from `job.json`, never edited.
 
-Current state: Small, Overhead, Bedroom body and Bed Box are wired. Tall, kitchen Base and Lounge
-generators are copied from Fusion `89bedb2` and produce boards when placed; their rail entries stay
-**planned** unless you launch with `CABLAB_MIGRATED_GENERATORS=1`. U-overhead is still unwired.
-Cab Lab Overhead is **not** replaced by the older Fusion pin (it already has LED groove and rangehood).
+Current state: Small, Overhead, U overhead (three OHC runs), Bedroom body, Bed Box, Bed Side Table, Tall, kitchen Base and Lounge
+are wired. Cab Lab Overhead is **not** replaced by the older Fusion pin (it already has LED groove and rangehood).
+Lounge is a rail group (I / L / U / Parallel). Cab Lab U is three I-shape runs; Fusion `89bedb2` still draws L.
+Hide Tall / Base / Lounge on the rail with `CABLAB_MIGRATED_GENERATORS=0`.
 
 ## Run
 
@@ -23,12 +23,6 @@ After that, use the **The Cab Lab** desktop shortcut, or:
 
 ```
 npm start
-```
-
-To place Tall / Base / Lounge from the rail:
-
-```
-CABLAB_MIGRATED_GENERATORS=1 npm start
 ```
 
 On Linux, if Chrome sandbox is not setuid, add `--no-sandbox` to the Electron invocation.
@@ -52,10 +46,12 @@ Generator unit + oracle tests: `npm run test:generators`.
   modules add `withSpace` (bind width / height / roof profile to the space), `envelopeProfile`, `handles`, `roofAware`
 - `renderer/cabinets3d.js` — draws boards, envelope, handles from generator output
 - `renderer/snap.js` — feature points (space + cabinet corners), face planes for alignment, edge / height inference
-- `renderer/interact.js` — left-button interaction: three-step placement, Move command, type-ins, select, resize, dividers, keys
+- `renderer/interact.js` — left-button interaction: three-step placement (floor-standing modules start on the floor; overhead on a ceiling edge), Lounge polyline, Move command, type-ins, select, resize, dividers, keys
+- `renderer/loungePlace.js` — I / L / U / Parallel floor polyline → generator params / pose
+- `renderer/schematic.js` — Fusion-style 2D front / plan schematic (click a cell, drag a boundary)
 - `renderer/presets.js` — per-module starting sizes (preset H today; a settings UI will edit them)
 - `renderer/hud.js` — cursor tooltip
-- `renderer/panel.js` — right panel (space or selected cabinet) and drawer tables
+- `renderer/panel.js` — right panel (space or selected cabinet, wide schematic for geometry modules) and drawer tables
 - `renderer/ui.js` — shell wiring
 - `generators/` — Cab Lab's own cabinet generators (TypeScript). Small / OHC / Bedroom / Bed Box are Cab Lab-native. Tall / kitchen / lounge are Fusion `89bedb2` copies. Test-only Fusion oracle: `generators/test/reference-fusion/` (never imported from `renderer/`).
 - `renderer/gen/` — generated ESM bundles of `generators/*/generator.ts` (do not edit)
@@ -66,14 +62,11 @@ Generator unit + oracle tests: `npm run test:generators`.
 
 ## Controls
 
-- Hold wheel: orbit · right-drag: pan · scroll: zoom
-- Placing, three steps (SketchUp-style): pick a module → hover shows the face under the cursor (floor, ceiling, any
-  wall, any face of a cabinet; blue sheet) → click a corner or grid point on it → draw a flat, zero-thickness rectangle
-  on that face and click the opposite corner (a corner is shared by up to three faces: drag onto the floor, a side
-  wall, or the other wall — the face is not locked until the second click) → pull the rectangle off the face, one way only (away from the wall / floor / cabinet —
-  it can't be pulled into them) and click. Side walls are only selectable from the **room inside**; the wall facing the
-  camera is ignored until you orbit to its inner face (a corner clicked earlier
-  still keeps that wall as a candidate). Floor and ceiling stay pickable from either side. A cabinet top
+- Left-drag: orbit · click: select · Alt+left-drag: orbit over handles · hold wheel: orbit · right-drag: pan · scroll: zoom
+- Placing, three steps (SketchUp-style): pick a module → **floor-standing modules start on the space floor only** (not a wall or a cabinet top); **Overhead** still starts on a ceiling ∩ wall line. Hover shows that working face (blue sheet) → click a corner or grid point on it → draw a flat, zero-thickness rectangle
+  on that face and click the opposite corner → pull the rectangle off the face, one way only (away from the wall / floor / cabinet —
+  it can't be pulled into them) and click. Side walls are only selectable from the **room inside** (Move still uses any pickable face). A corner is shared by up to three faces: for overhead, drag onto the ceiling, the back wall, or a side
+  wall — the face is not locked until the second click. Floor and ceiling stay pickable from either side. A cabinet top
   flush with the ceiling counts as the ceiling (pull down into the room). A cabinet
   face flush with a wall (no room outward) pulls into the room on that same plane;
   an empty side wall is still not selectable from outside. Only the two in-plane sizes are typed in
@@ -114,13 +107,23 @@ Generator unit + oracle tests: `npm run test:generators`.
   possible door side), Move slides it along the ceiling only (ΔZ is 0), the H handle sits on the bottom and pulls it
   down. Selecting an overhead turns the right panel into its **editor page** (wide): a **zone strip** left → right
   (drag a boundary in 10 mm steps, `Shift` = 1 mm; click a zone, `Ctrl+click` adds to the selection; **Add / Delete /
-  Average selected**; widths and running positions underneath), the generator's **2D front view** (selected zone
-  outlined), a card for the selected zone (type Up flap / Fixed panel / Open, width — the neighbour absorbs the
+  Average selected**; widths and running positions underneath), the **2D front schematic** (click a zone, drag a
+  boundary — the same as the strip), a card for the selected zone (type Up flap / Fixed panel / Open, width — the neighbour absorbs the
   difference) and the cabinet-level fields folded below (outer size incl. doors, bottom height, stock). Zones are
   never narrower than 150 mm and always sum to W. Every editor action is one undo step. The orange vertical bars in
   3D are the same boundaries. Boards are emitted in their final assembled pose (fronts at local −Y, top at H).
+- **U overhead**: one bounding box on the ceiling (same placement as Overhead). Inside it, three existing OHC
+  generators run along the left, back and right of that box; doors face the opening. Envelope D is the U's outer
+  depth; **Run depth** is each cabinet's carcass depth. The box has no extra door allowance (doors hang inward).
+  The right-panel plan schematic shows the three runs; drag a zone boundary on a run.
+- **Lounge** is a rail group: hovering it opens **I** (two clicks), **L** (three), **U** (four) and **Parallel** (three).
+  All clicks stay on the floor. The polyline is the **back edge** (axis-aligned; each run after the first is 90°);
+  section depth grows toward the room; height and depth come from the preset. `Enter` finishes when the shape is
+  complete; `Esc` cancels. You stay armed for another of the same branch. **U** is three existing I-shape runs inside
+  the bounding box (mouth at local Y = 0) — Fusion at `89bedb2` still falls through to L. Parallel along X is posed
+  `rotZ 90` so Fusion's facing axis stays local X. Generator: `generators/lounge/generator.ts`.
 - **Bedroom** is a rail group: hovering it opens a flyout with **Body** (the nose slab below), **Bed Box** (below) and
-  **Bed Side Table** (listed, not wired yet). Groups are declared in `MODULE_GROUPS` in `renderer/modules.js`.
+  **Bed Side Table** (below). Groups are declared in `MODULE_GROUPS` in `renderer/modules.js`.
 - **Bedroom › Bed Box** (one per vehicle, needs the Body first — the flyout item is disabled until it exists): the bed
   base as one solid volume, glued to the Body's room-side face, centred on the van's centre line and symmetric about
   it; height = tunnel boot height (420 until the boot is defined on the Body). Two steps: **width** — a 2D line on the
@@ -131,6 +134,11 @@ Generator unit + oracle tests: `npm run test:generators`.
   steps (nothing is duplicated). It follows the Body: change the Body's depth, redefine the space or edit W / D in the
   panel and `attach()` re-centres it and keeps it against the Body face (`bindToJob` in `job.js`); the Body's depth drag
   ignores cabinets attached to it. Generator `generators/bedBox/generator.ts`.
+- **Bedroom › Bed Side Table** (one per side, needs the Body): a nightstand volume against the Body's room-side face
+  and a side wall. Two steps: **width** — move toward the left or right of the van; the table sits on that wall and
+  grows inward (stops at the Bed Box if present, otherwise the centre line); **length** — pull into the room from
+  the body. Picking the module again and hovering a side that already has a table re-sizes it. Follows the Body via
+  `attach()`. v0 emits no boards. Generator: `generators/bedSideTable/generator.ts`.
 - **Bedroom › Body** (nose slab, one per vehicle): not a free box. Its front is the nose cross-section, its width the van's
   inside width, its height the roof at the room-side face; the only free size is the depth **from the front**.
   Pick the module → the slab is already shown at the preset depth (700). Click anywhere → the room-side face follows
@@ -163,10 +171,13 @@ Generator unit + oracle tests: `npm run test:generators`.
   `R` still rotates the whole cabinet 90° about its centre (that does change the footprint).
   Fronts are drawn light blue, carcass tan, so the door side of every cabinet is visible at a glance.
 - Blue cubes: pull W / D / H · orange bars: zone boundaries (horizontal for stacked zones, vertical for zones along W)
+- Right panel (geometry modules): a **2D schematic** of the generated cabinet — front for stacked / OHC / kitchen, plan for Lounge / U overhead. Click a cell to select it; drag a boundary to change a divider (10 mm steps, `Shift` = 1 mm). That writes params and regenerates; it does not edit mesh vertices.
 - `M` move · `O` face · `R` rotate 90° · `F` frame selection (or space) · `Del` remove · `Esc` cancel / deselect
 - `Ctrl+N/O/S` new / open / save (`Ctrl+Shift+S` save as) · `Ctrl+Z/Y` undo / redo · `F12` dev tools
 - `Ctrl+Shift+L` open the usage log folder
+- `Ctrl+Shift+P` (or **Capture** next to Top/Front/Side) save the live camera plus Top / Front / Side / 3D into `logs/latest-view/` (and a timestamped `logs/view-<time>/`)
+- `Ctrl+Shift+Q` or `Ctrl+Shift+G` (or **QA** next to Capture) replace the job with a QA layout of every wired module, then capture each module into `logs/qa/` (asks first if cabinets already exist)
 
 ## Usage log
 
-Every action and every system decision is appended to `logs/usage.jsonl` (git-ignored), one JSON object per line: module armed, anchor point, the last 60 cursor resolutions of a placement (feature / inference / plane, with the world point), typed dimensions, final box, handle drags (envelope before → after), panel edits, space definition, file operations, undo/redo, generator validation errors and uncaught errors (which also write `logs/crash-<time>.json` with the whole job). `logs/latest.json` holds the last action and last error. When something goes wrong, the log is what to read first — see `.cursor/rules/cab-lab-usage-log.mdc`.
+Every action and every system decision is appended to `logs/usage.jsonl` (git-ignored), one JSON object per line: module armed, anchor point, the last 60 cursor resolutions of a placement (feature / inference / plane, with the world point), typed dimensions, final box, handle drags (envelope before → after), panel edits, space definition, file operations, undo/redo, generator validation errors and uncaught errors (which also write `logs/crash-<time>.json` with the whole job). `logs/latest.json` holds the last action and last error. `Ctrl+Shift+P` writes PNG views of the 3D canvas to `logs/latest-view/` (current camera + Top / Front / Side / 3D). When something goes wrong, the log is what to read first — see `.cursor/rules/cab-lab-usage-log.mdc`.

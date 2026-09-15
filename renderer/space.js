@@ -24,13 +24,34 @@ export const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.screenSpacePanning = true;
-// Left button stays free for selection. Hold the wheel to orbit,
-// right-drag to pan, scroll the wheel to zoom.
+// Left-drag orbits in interact.js (click still selects). Hold the wheel to
+// orbit, right-drag to pan, scroll the wheel to zoom.
 controls.mouseButtons = {
   LEFT: null,
   MIDDLE: THREE.MOUSE.ROTATE,
   RIGHT: THREE.MOUSE.PAN,
 };
+
+const _orbitQuat = new THREE.Quaternion().setFromUnitVectors(camera.up, new THREE.Vector3(0, 1, 0));
+const _orbitQuatInv = _orbitQuat.clone().invert();
+const _orbitOffset = new THREE.Vector3();
+const _orbitSph = new THREE.Spherical();
+
+/** Rotate the camera around the orbit target by a pixel delta (Z-up, same convention as OrbitControls). */
+export function orbitByPixels(dx, dy) {
+  const h = Math.max(canvas.clientHeight, 1);
+  _orbitOffset.copy(camera.position).sub(controls.target);
+  _orbitOffset.applyQuaternion(_orbitQuat);
+  _orbitSph.setFromVector3(_orbitOffset);
+  _orbitSph.theta -= (2 * Math.PI * dx) / h;
+  _orbitSph.phi -= (2 * Math.PI * dy) / h;
+  _orbitSph.phi = Math.max(0.02, Math.min(Math.PI - 0.02, _orbitSph.phi));
+  _orbitSph.makeSafe();
+  _orbitOffset.setFromSpherical(_orbitSph);
+  _orbitOffset.applyQuaternion(_orbitQuatInv);
+  camera.position.copy(controls.target).add(_orbitOffset);
+  camera.lookAt(controls.target);
+}
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 const key = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -243,6 +264,50 @@ export function drawSpace(resolved) {
 
 // --- views ----------------------------------------------------------------
 
+function pngFromCanvas() {
+  renderer.render(scene, camera);
+  const url = renderer.domElement.toDataURL("image/png");
+  const comma = url.indexOf(",");
+  return comma >= 0 ? url.slice(comma + 1) : "";
+}
+
+/**
+ * Dump the 3D canvas: the live camera, then the four standard views.
+ * Restores the camera afterwards. Returns PNG base64 (no data-URL prefix).
+ */
+export function captureViewportViews() {
+  const damp = controls.enableDamping;
+  controls.enableDamping = false;
+  controls.update();
+  const saved = {
+    x: camera.position.x,
+    y: camera.position.y,
+    z: camera.position.z,
+    tx: controls.target.x,
+    ty: controls.target.y,
+    tz: controls.target.z,
+  };
+  const images = { current: pngFromCanvas() };
+  for (const name of ["top", "front", "side", "3d"]) {
+    setView(name);
+    images[name] = pngFromCanvas();
+  }
+  camera.position.set(saved.x, saved.y, saved.z);
+  controls.target.set(saved.tx, saved.ty, saved.tz);
+  controls.update();
+  renderer.render(scene, camera);
+  controls.enableDamping = damp;
+  return {
+    width: renderer.domElement.width,
+    height: renderer.domElement.height,
+    camera: {
+      pos: [Math.round(saved.x * 10) / 10, Math.round(saved.y * 10) / 10, Math.round(saved.z * 10) / 10],
+      target: [Math.round(saved.tx * 10) / 10, Math.round(saved.ty * 10) / 10, Math.round(saved.tz * 10) / 10],
+    },
+    images,
+  };
+}
+
 export function setView(name) {
   const W = extent.maxX - extent.minX;
   const D = extent.maxY - extent.minY;
@@ -250,10 +315,11 @@ export function setView(name) {
   const cx = extent.minX + W / 2;
   const cy = extent.minY + D / 2;
   const span = Math.max(W, D, H);
-  // OrbitControls keeps the up vector it was built with (Z), so the top view
-  // is tilted by a hair to avoid a degenerate look-at.
+  // OrbitControls keeps the up vector it was built with (Z). Top view is
+  // tilted enough that a drag can still change azimuth; a true look-down
+  // (phi ≈ 0) locks the orbit.
   if (name === "top") {
-    camera.position.set(cx, cy - span * 0.02, span * 1.6);
+    camera.position.set(cx, cy - span * 0.18, span * 1.6);
     controls.target.set(cx, cy, 0);
   } else if (name === "front") {
     camera.position.set(cx, -span * 1.6, H / 2);
@@ -266,10 +332,22 @@ export function setView(name) {
     camera.position.set(cx + span * 0.9, -span * 1.25, span * 0.85);
     controls.target.set(cx, cy, H * 0.3);
   }
+  const damp = controls.enableDamping;
+  controls.enableDamping = false;
   controls.update();
+  controls.enableDamping = damp;
 }
 
-/** Move the camera so a sphere (centre, radius) fills the view, keeping the current direction. */
+/** Camera inside the 4000×3000 box, looking at the left-wall run (QA layout). */
+export function setQaCamera() {
+  camera.position.set(2400, 2000, 1400);
+  controls.target.set(400, 1600, 500);
+  const damp = controls.enableDamping;
+  controls.enableDamping = false;
+  controls.update();
+  controls.enableDamping = damp;
+}
+
 export function frame(center, radius) {
   const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
   const dist = radius / Math.sin((camera.fov * Math.PI) / 360) * 1.1;

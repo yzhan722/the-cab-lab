@@ -2,6 +2,26 @@
 // lounge emits panels/lids with a `placement` box. Cab Lab 3D draws `result.boards`
 // with x0..z1 (and optional profileVector). This adapter does not change formulas.
 
+/**
+ * Fusion kitchen errors when an interior V-panel has half-slots on both
+ * faces and `vPanelMachiningPreferences` has no mode for that index. Cab Lab
+ * has no machining UI yet, so missing interior prefs default to
+ * `left_half_right_through`. Explicit prefs in params win.
+ */
+export function withKitchenVPanelPrefs(params) {
+  const columns = params?.columns || [];
+  const existing = Array.isArray(params?.vPanelMachiningPreferences)
+    ? params.vPanelMachiningPreferences
+    : [];
+  const prefs = existing.filter((p) => p && p.vPanelIndex >= 1 && p.vPanelIndex < columns.length);
+  for (let i = 1; i < columns.length; i += 1) {
+    if (!prefs.some((p) => p.vPanelIndex === i)) {
+      prefs.push({ vPanelIndex: i, mode: "left_half_right_through" });
+    }
+  }
+  return { ...params, vPanelMachiningPreferences: prefs };
+}
+
 function num(v, d = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;

@@ -4,6 +4,7 @@ import { generateOverheadCabinet } from "../overheadCabinet/generator.ts";
 import { generateGeneralTallCabinet } from "../generalTall/generator.ts";
 import { generateKitchenCabinetGeometry } from "../kitchen/generator.ts";
 import { generateLoungeGeometry } from "../lounge/generator.ts";
+import { generateUShapeOverhead } from "../uShapeOverhead/generator.ts";
 import { defaultKitchenParams, defaultLoungeParams, defaultTallParams } from "./defaults.ts";
 
 function testExistingSmallCabinetStillGenerates(): void {
@@ -55,14 +56,33 @@ function testLoungeFirstPass(): void {
   assert.ok(result.panels.length > 0, "lounge panels");
 }
 
-function testLoungeUShapeFallsThroughToL(): void {
-  const l = generateLoungeGeometry({ ...defaultLoungeParams, style: "L_SHAPE" });
-  const u = generateLoungeGeometry({ ...defaultLoungeParams, style: "U_SHAPE" });
-  assert.equal(u.panels.length, l.panels.length);
-  assert.deepEqual(
-    u.panels.map((p) => p.id),
-    l.panels.map((p) => p.id),
-  );
+function testLoungeUShapeThreeIRuns(): void {
+  const u = generateLoungeGeometry({
+    ...defaultLoungeParams,
+    style: "U_SHAPE",
+    totalWidth: 2000,
+    depth: 1200,
+    mainDepth: 350,
+  });
+  assert.equal(u.validation.errors.length, 0, u.validation.errors.join("; "));
+  const prefixes = new Set(u.panels.map((p) => String(p.id).split(":")[0]));
+  assert.deepEqual([...prefixes].sort(), ["back", "left", "right"]);
+  assert.ok(u.panels.length > 10, "three I runs");
+}
+
+function testUOverheadFirstPass(): void {
+  const result = generateUShapeOverhead({
+    cabinetWidth: 2000,
+    outerDepth: 1200,
+    cabinetHeight: 400,
+    cabinetDepth: 350,
+    featureWidth: 15,
+    frontPanelThickness: 16,
+    topClearanceHeight: 40,
+    clearance: 2.5,
+  });
+  assert.equal(result.validation.errors.length, 0, result.validation.errors.join("; "));
+  assert.ok(result.boards.length > 15, "u-overhead three runs");
 }
 
 const tests = [
@@ -71,7 +91,8 @@ const tests = [
   testGeneralTallFirstPass,
   testKitchenFirstPass,
   testLoungeFirstPass,
-  testLoungeUShapeFallsThroughToL,
+  testLoungeUShapeThreeIRuns,
+  testUOverheadFirstPass,
 ];
 
 let failed = 0;

@@ -6,10 +6,13 @@ import { generateSmallCabinet } from "./gen/smallCabinet.js";
 import { generateBedroom } from "./gen/bedroom.js";
 import { generateBedBox, BED_BOX_DEFAULT_HEIGHT, BED_BOX_MIN } from "./gen/bedBox.js";
 import { generateOverheadCabinet, generateOHCSvgPreview } from "./gen/overheadCabinet.js";
+import { generateUShapeOverhead, resolveUOverheadLayout } from "./gen/uShapeOverhead.js";
+import { generateBedSideTable, BED_SIDE_DEFAULT_HEIGHT, BED_SIDE_MIN } from "./gen/bedSideTable.js";
 import { generateGeneralTallCabinet } from "./gen/generalTall.js";
 import { generateKitchenCabinetGeometry } from "./gen/kitchen.js";
 import { generateLoungeGeometry } from "./gen/lounge.js";
-import { displayGeneralTall, displayKitchen, displayLounge } from "./displayBoards.js";
+import { displayGeneralTall, displayKitchen, displayLounge, withKitchenVPanelPrefs } from "./displayBoards.js";
+import { withTallFridgeDefaults } from "./panelDefaults.js";
 export { isRailModule, MIGRATED_MODULE_IDS } from "./flags.js";
 import { clearHeightAt, maxClearHeight } from "./spaces.js";
 import { builtInFinish, builtInStock, cabinetColor, thickness } from "./materials.js";
@@ -413,6 +416,172 @@ const overheadCabinet = {
 };
 
 /**
+ * U-overhead: three OHC runs (left, back, right) inside one bounding box.
+ * Reuses generateOverheadCabinet; placement is ceiling like a single OHC.
+ * Envelope D is the U's outer depth; cabinetDepth is each run's carcass depth.
+ * Doors hang into the opening, so the box has no extra front allowance.
+ */
+const uShapeOverheadCabinet = {
+  id: "uShapeOverheadCabinet",
+  label: "U overhead",
+  sub: "three OHC runs",
+  placement: "ceiling",
+  noOrient: true,
+  growsDown: true,
+  noFrontAllowance: true,
+  panel: "uohc",
+  defaultSize: { W: 2000, D: 1200, H: 400 },
+  minSize: { W: 2 * MIN_ZONE_WIDTH + 150, D: MIN_ZONE_WIDTH + 150, H: 150 },
+
+  defaults(W, D, H, materials) {
+    const { finish, stock } = materialsOf(materials);
+    const color = cabinetColor(finish);
+    const run = 350;
+    const back = Math.max(MIN_ZONE_WIDTH, round1(W - 2 * run));
+    return {
+      cabinetWidth: round1(W),
+      outerDepth: round1(D),
+      cabinetHeight: round1(H),
+      cabinetDepth: run,
+      style: "style_1",
+      featureWidth: thickness(stock, "carcass"),
+      frontPanelThickness: thickness(stock, "door"),
+      topClearanceHeight: 40,
+      clearance: 2.5,
+      carcassColor: color.carcassColor,
+      carcassColorName: color.carcassColorName,
+      doorSeries: color.doorSeries,
+      doorColor: color.doorColor,
+      doorColorName: color.doorColorName,
+      colorSlot: color.colorSlot,
+      leftZones: [{ id: "left-1", type: "up_flap", width: round1(D) }],
+      backZones: [{ id: "back-1", type: "up_flap", width: back }],
+      rightZones: [{ id: "right-1", type: "up_flap", width: round1(D) }],
+    };
+  },
+
+  generate(params) {
+    return generateUShapeOverhead(params);
+  },
+
+  envelope(params) {
+    return { W: params.cabinetWidth, D: params.outerDepth, H: params.cabinetHeight };
+  },
+
+  setEnvelope(params, { W, D, H }) {
+    const next = { ...params };
+    if (W != null) next.cabinetWidth = round1(W);
+    if (D != null) next.outerDepth = round1(D);
+    if (H != null) next.cabinetHeight = round1(H);
+    const layout = resolveUOverheadLayout(next);
+    next.cabinetDepth = layout.run;
+    next.leftZones = fitZoneWidths(next.leftZones || [], layout.leftLen);
+    next.rightZones = fitZoneWidths(next.rightZones || [], layout.rightLen);
+    next.backZones = fitZoneWidths(next.backZones || [], layout.backLen);
+    return next;
+  },
+
+  dividers() { return []; },
+  setDivider(params) { return params; },
+  setRunDivider(params, runKey, index, pos) {
+    const layout = resolveUOverheadLayout(params);
+    const total = runKey === "backZones" ? layout.backLen : layout.leftLen;
+    const zones = (params[runKey] || []).map((z) => ({ ...z }));
+    const left = zones[index];
+    const right = zones[index + 1];
+    if (!left || !right) return params;
+    const x0 = zones.slice(0, index).reduce((s, z) => s + z.width, 0);
+    const span = round1(left.width + right.width);
+    const x = Math.max(x0 + MIN_ZONE_WIDTH, Math.min(x0 + Math.min(span, total) - MIN_ZONE_WIDTH, Math.round(pos)));
+    left.width = round1(x - x0);
+    right.width = round1(span - left.width);
+    return { ...params, [runKey]: zones };
+  },
+  zoneTypes: [
+    { id: "up_flap", label: "Up flap", short: "Flap" },
+    { id: "fixed_panel", label: "Fixed panel", short: "Fixed" },
+    { id: "open", label: "Open", short: "Open" },
+  ],
+};
+
+/**
+ * Bed Side Table: volume beside the bed, against the Bedroom body and a
+ * side wall. One per side. Placement "bedSide" (interact.js).
+ */
+const bedSideTable = {
+  id: "bedSideTable",
+  label: "Bed Side Table",
+  sub: "beside the bed · needs the body",
+  placement: "bedSide",
+  requires: "bedroom",
+  attachesTo: "bedroom",
+  volumeOnly: true,
+  handles: ["W", "D", "H"],
+  defaultSize: { W: 400, D: 400, H: BED_SIDE_DEFAULT_HEIGHT },
+  minSize: { W: BED_SIDE_MIN.width, D: BED_SIDE_MIN.depth, H: BED_SIDE_MIN.height },
+
+  defaults(W, D, H, materials) {
+    const { finish, stock } = materialsOf(materials);
+    const color = cabinetColor(finish);
+    return {
+      width: round1(W),
+      depth: round1(D),
+      height: round1(H),
+      side: "left",
+      panelThickness: thickness(stock, "carcass"),
+      frontPanelThickness: 0,
+      carcassColor: color.carcassColor,
+      doorSeries: color.doorSeries,
+      doorColor: color.doorColor,
+      colorSlot: color.colorSlot,
+    };
+  },
+  generate(params) {
+    return generateBedSideTable(params);
+  },
+  envelope(params) {
+    return { W: params.width, D: params.depth, H: params.height };
+  },
+  setEnvelope(params, { W, D, H }) {
+    const next = { ...params };
+    if (W != null) next.width = round1(W);
+    if (D != null) next.depth = round1(D);
+    if (H != null) next.height = round1(H);
+    return next;
+  },
+
+  attach(params, pose, { cabinets, resolved }) {
+    const body = cabinets.find((c) => c.moduleId === "bedroom");
+    if (!body || !resolved) return null;
+    const bodyD = getModule(body.moduleId).envelope(body.params).D;
+    const side = params.side === "right" ? "right" : "left";
+    const minX = resolved.bounds.minX;
+    const maxX = resolved.bounds.maxX;
+    const bed = cabinets.find((c) => c.moduleId === "bedBox");
+    let W = params.width;
+    if (bed) {
+      const bedEnv = getModule(bed.moduleId).envelope(bed.params);
+      const cx = (resolved.bounds.minX + resolved.bounds.maxX) / 2;
+      const bed0 = cx - bedEnv.W / 2;
+      const bed1 = cx + bedEnv.W / 2;
+      const gap = side === "left" ? bed0 - minX : maxX - bed1;
+      if (gap + 0.5 < getModule("bedSideTable").minSize.W) return { params, pose };
+      W = round1(Math.min(W, Math.max(getModule("bedSideTable").minSize.W, gap)));
+    }
+    const x = side === "left" ? round1(minX + W) : round1(maxX);
+    const nextPose = { x, y: round1(bodyD + params.depth), z: 0, rotZ: 180 };
+    const nextParams = W === params.width && params.side === side ? params : { ...params, width: W, side };
+    const same = pose.x === nextPose.x && pose.y === nextPose.y && pose.z === nextPose.z && (pose.rotZ || 0) === nextPose.rotZ
+      && nextParams === params;
+    return { params: nextParams, pose: same ? pose : nextPose };
+  },
+
+  dividers() { return []; },
+  setDivider(params) { return params; },
+  zoneTypes: [],
+};
+
+/**
  * General tall: Fusion 89bedb2 stacking (bottom system → zones + Zi → top system).
  * Zones in params are bottom → top. Fridge is a zone, not a separate module.
  * Cab Lab OHC is not replaced; this is the floor-standing tall unit.
@@ -465,7 +634,7 @@ const generalTallCabinet = {
   },
 
   generate(params) {
-    return displayGeneralTall(generateGeneralTallCabinet(params));
+    return displayGeneralTall(generateGeneralTallCabinet(withTallFridgeDefaults(params)));
   },
 
   envelope(params) {
@@ -579,7 +748,7 @@ const kitchenCabinet = {
   },
 
   generate(params) {
-    return displayKitchen(generateKitchenCabinetGeometry(params));
+    return displayKitchen(generateKitchenCabinetGeometry(withKitchenVPanelPrefs(params)));
   },
 
   envelope(params) {
@@ -633,6 +802,25 @@ const kitchenCabinet = {
     return { ...params, columns };
   },
 
+  /** Horizontal boundary under kitchen zone `zoneIndex` in column `colIndex` (zones stack top → bottom). */
+  setColumnZoneDivider(params, colIndex, zoneIndex, posZ) {
+    const g = params.globalSettings || {};
+    const columns = (params.columns || []).map((c, i) => (
+      i === colIndex ? { ...c, zones: (c.zones || []).map((z) => ({ ...z })) } : c
+    ));
+    const col = columns[colIndex];
+    if (!col || zoneIndex >= (col.zones || []).length - 1) return params;
+    const ch = g.height || 0;
+    let top = ch;
+    for (let i = 0; i < zoneIndex; i += 1) top -= col.zones[i].height;
+    const bot = top - col.zones[zoneIndex].height - col.zones[zoneIndex + 1].height;
+    const z = Math.max(bot + MIN_ZONE_HEIGHT, Math.min(top - MIN_ZONE_HEIGHT, Math.round(posZ)));
+    col.zones[zoneIndex].height = round1(top - z);
+    col.zones[zoneIndex + 1].height = round1(z - bot);
+    if (col.zones[zoneIndex].height < MIN_ZONE_HEIGHT || col.zones[zoneIndex + 1].height < MIN_ZONE_HEIGHT) return params;
+    return { ...params, columns };
+  },
+
   zoneTypes: [
     { id: "left_door", label: "Door (hinge left)" },
     { id: "right_door", label: "Door (hinge right)" },
@@ -649,15 +837,18 @@ function loungeEnvelope(params) {
   const style = params.style || "I_SHAPE";
   const H = params.height;
   if (style === "I_SHAPE") return { W: params.mainWidth, D: params.mainDepth, H };
-  if (style === "PARALLEL" || style === "U_SHAPE") return { W: params.totalWidth, D: params.depth, H };
+  if (style === "PARALLEL") return { W: params.totalWidth, D: params.depth, H };
+  if (style === "U_SHAPE") return { W: params.totalWidth || params.mainWidth, D: params.depth || params.mainDepth, H };
   return { W: params.mainWidth, D: Math.max(params.mainDepth || 0, params.lDepth || 0), H };
 }
 
 const loungeGenerator = {
   id: "loungeGenerator",
   label: "Lounge",
-  sub: "L / I layouts",
+  sub: "I / L / U / Parallel",
   panel: "lounge",
+  placement: "lounge",
+  noFrontAllowance: true,
   defaultSize: { W: 2000, D: 600, H: 420 },
   minSize: { W: 800, D: 400, H: 200 },
 
@@ -705,7 +896,10 @@ const loungeGenerator = {
     if (style === "I_SHAPE") {
       if (W != null) next.mainWidth = round1(W);
       if (D != null) next.mainDepth = round1(D);
-    } else if (style === "PARALLEL" || style === "U_SHAPE") {
+    } else if (style === "PARALLEL") {
+      if (W != null) next.totalWidth = round1(W);
+      if (D != null) next.depth = round1(D);
+    } else if (style === "U_SHAPE") {
       if (W != null) next.totalWidth = round1(W);
       if (D != null) next.depth = round1(D);
     } else {
@@ -723,8 +917,10 @@ const loungeGenerator = {
 export const MODULES = {
   smallCabinet,
   overheadCabinet,
+  uShapeOverheadCabinet,
   bedroom,
   bedBox,
+  bedSideTable,
   generalTallCabinet,
   kitchenCabinet,
   loungeGenerator,
@@ -742,18 +938,24 @@ export const MODULE_GROUPS = [
     items: [
       { moduleId: "bedroom", label: "Body", sub: "nose volume" },
       { moduleId: "bedBox", label: "Bed Box", sub: "bed base · needs the body" },
-      { id: "bedSideTable", label: "Bed Side Table", sub: "not wired yet", planned: true },
+      { moduleId: "bedSideTable", label: "Bed Side Table", sub: "beside the bed · needs the body" },
+    ],
+  },
+  {
+    id: "lounge",
+    label: "Lounge",
+    sub: "I / L / U / Parallel",
+    items: [
+      { moduleId: "loungeGenerator", style: "I_SHAPE", label: "I", sub: "one run · two clicks" },
+      { moduleId: "loungeGenerator", style: "L_SHAPE", label: "L", sub: "two runs · three clicks" },
+      { moduleId: "loungeGenerator", style: "U_SHAPE", label: "U", sub: "three runs · four clicks" },
+      { moduleId: "loungeGenerator", style: "PARALLEL", label: "Parallel", sub: "two facing · three clicks" },
     ],
   },
 ];
 
-/** Placeholders shown in the rail but not yet wired. Tall / Base / Lounge stay planned until CABLAB_MIGRATED_GENERATORS=1. */
-export const PLANNED_MODULES = [
-  { id: "generalTallCabinet", label: "Tall", sub: "general tall" },
-  { id: "kitchenCabinet", label: "Base", sub: "kitchen run" },
-  { id: "loungeGenerator", label: "Lounge", sub: "L / I layouts" },
-  { id: "uShapeOverheadCabinet", label: "U overhead", sub: "three runs" },
-];
+/** Placeholders shown in the rail but not yet wired. */
+export const PLANNED_MODULES = [];
 
 export function getModule(id) {
   const m = MODULES[id];
