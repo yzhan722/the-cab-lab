@@ -416,6 +416,80 @@ export function pointOnLine(clientX, clientY, from, dir) {
   return { x: from.x + dir[0] * t, y: from.y + dir[1] * t, z: from.z + dir[2] * t };
 }
 
+function nearestOnSegment(clientX, clientY, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dz = (b.z ?? 0) - (a.z ?? 0);
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 1) return null;
+  const dir = [dx / len, dy / len, dz / len];
+  const origin = new THREE.Vector3(a.x, a.y, a.z);
+  const dvec = new THREE.Vector3(dir[0], dir[1], dir[2]);
+  let t = closestTOnLine(clientX, clientY, origin, dvec);
+  if (!Number.isFinite(t)) return null;
+  t = Math.max(0, Math.min(len, t));
+  const p = { x: a.x + dir[0] * t, y: a.y + dir[1] * t, z: a.z + dir[2] * t };
+  const c = toClient(p.x, p.y, p.z);
+  if (c.behind) return null;
+  return { p, distPx: Math.hypot(c.x - clientX, c.y - clientY), dirs: [dir, dir.map((v) => -v)] };
+}
+
+/**
+ * Nearest millimetre on a ceiling ∩ wall line (space walls, plus cabinet top
+ * edges that already sit on that line). Overhead placement can start anywhere
+ * along the edge, not only at a corner.
+ */
+export function nearestCeilingEdge(clientX, clientY, { maxPx = SNAP_RADIUS_PX * uiScale() * 1.8 } = {}) {
+  const sp = getSpace();
+  if (!sp) return null;
+  const z = sp.height;
+  const b = sp.bounds;
+  const y0 = Math.max(b.minY, sp.flatFromY ?? b.minY);
+  const walls = new Set(sp.walls || []);
+  const segs = [];
+  const add = (x0, yA, x1, y1) => segs.push({ a: { x: x0, y: yA, z }, b: { x: x1, y: y1, z } });
+  if (walls.has(3)) add(b.minX, y0, b.minX, b.maxY);
+  if (walls.has(1)) add(b.maxX, y0, b.maxX, b.maxY);
+  if (walls.has(0) && y0 <= b.minY + 0.5) add(b.minX, b.minY, b.maxX, b.minY);
+  if (walls.has(2)) add(b.minX, b.maxY, b.maxX, b.maxY);
+  for (const cab of getJob().cabinets) {
+    const fp = envelopeFootprint(cab, cab.pose);
+    if (Math.abs(fp.z1 - z) > 0.5) continue;
+    const corners = [
+      [fp.minX, fp.minY], [fp.maxX, fp.minY], [fp.maxX, fp.maxY], [fp.minX, fp.maxY],
+    ];
+    for (let i = 0; i < 4; i += 1) {
+      const [xA, yA] = corners[i];
+      const [xB, yB] = corners[(i + 1) % 4];
+      const mx = (xA + xB) / 2;
+      const my = (yA + yB) / 2;
+      if (my < y0 - 0.5) continue;
+      const onWall = (walls.has(3) && Math.abs(mx - b.minX) < 0.5)
+        || (walls.has(1) && Math.abs(mx - b.maxX) < 0.5)
+        || (walls.has(0) && Math.abs(my - b.minY) < 0.5)
+        || (walls.has(2) && Math.abs(my - b.maxY) < 0.5);
+      if (onWall) add(xA, yA, xB, yB);
+    }
+  }
+  let best = null;
+  for (const s of segs) {
+    const hit = nearestOnSegment(clientX, clientY, s.a, s.b);
+    if (!hit || hit.distPx > maxPx) continue;
+    if (!best || hit.distPx < best.distPx) best = hit;
+  }
+  if (!best) return null;
+  const p = {
+    x: snap(best.p.x),
+    y: snap(best.p.y),
+    z,
+  };
+  if (Math.abs(p.x - b.minX) <= Math.abs(p.x - b.maxX) && Math.abs(best.p.x - b.minX) < 0.5) p.x = b.minX;
+  if (Math.abs(p.x - b.maxX) < Math.abs(p.x - b.minX) && Math.abs(best.p.x - b.maxX) < 0.5) p.x = b.maxX;
+  if (Math.abs(best.p.y - b.minY) < 0.5) p.y = b.minY;
+  if (Math.abs(best.p.y - b.maxY) < 0.5) p.y = b.maxY;
+  return { p, distPx: best.distPx, dirs: best.dirs };
+}
+
 /**
  * Nearest feature point to the cursor within SNAP_RADIUS_PX, or null.
  * `exclude` skips points that came only from the given cabinet id;

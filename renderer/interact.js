@@ -2,11 +2,11 @@
 //
 //   idle       click board → select · click empty → deselect · press handle → drag W/D/H or divider
 //   armed      (module picked) floor-standing: hover on the floor · click → anchor
-//              overhead / U overhead: hover on a ceiling ∩ wall corner · click → anchor
+//              overhead / U overhead: hover on a ceiling ∩ wall edge · click → anchor
 //   face       a zero-thickness rectangle is drawn on that face (floor for standing
 //              modules; ceiling / wall / side for overhead) · click → corner
 //   extrude    the rectangle is pulled along the face normal, away from the solid only · click / Enter → create
-//   lounge     polyline of 2–4 floor points (I / L / U), then seat depth toward the room
+//   lounge     I / L / U polyline or Parallel (two facing I), then seat depth toward the room / aisle
 //   move       (M) click a grab point, then a target point; ΔX/ΔY/ΔZ type-ins; Ctrl+click copies
 //   orient     (O / Face) click a side of a cabinet → its doors face that way (pending, orange);
 //              click elsewhere or Enter confirms · Esc restores
@@ -28,7 +28,7 @@ import {
 import {
   nearestSnap, nearestInference, pointOnLine, toClient, nearestFaceAlign, nearestAxisAlign, describePoint, faceGuide,
   pickFace, facesAtPoint, facesOnPoint, facePlanes, faceVisible, rayHitFace, preferDrawable, drawableOn, extrudeRoom, inPlaneAxes, axisVector, AXES,
-  INFER_BAND_PX, INFER_RELEASE_PX, AXIS_DIRS, uiScale,
+  INFER_BAND_PX, INFER_RELEASE_PX, AXIS_DIRS, uiScale, nearestCeilingEdge, SNAP_RADIUS_PX,
 } from "./snap.js";
 import { showTip, hideTip } from "./hud.js";
 import { revealPane } from "./dock.js";
@@ -52,7 +52,7 @@ let retype = null; // keyboard re-size of the last created cabinet
 let nose = null; // nose placement (Bedroom): { moduleId, step: ready | drag, editId, D, t0, locked, snapLabel, clamped }
 let bed = null; // bed box placement: { moduleId, step: width | depth, editId, W, D, H, locked: {W, D}, snapLabel, clamped }
 let bst = null; // bed side table: { moduleId, step: width | depth, side, editId, W, D, H, locked, snapLabel, clamped }
-let lounge = null; // lounge polyline: { moduleId, step: path | depth, path, hover, depth, height, inward, locked, snapLabel, clamped }
+let lounge = null; // lounge polyline: { moduleId, style, step: path | depth, path, hover, depth, height, inward, locked, snapLabel, clamped }
 let cplane = null; // construction plane: { step: pick | offset, face, offset, locked, snapLabel, clamped }
 let lastSize = null; // { moduleId, W, D, H } of the last created box
 let lastCreated = null; // cabinet id that digits re-type while still armed
@@ -94,12 +94,16 @@ export function getPlacingModule() {
 
 // --- arm / disarm ----------------------------------------------------------------
 
-export function armPlacement(moduleId) {
+export function getLoungeStyle() {
+  return lounge ? lounge.style : null;
+}
+
+export function armPlacement(moduleId, extras = {}) {
   if (!job.hasSpace()) { log("place.arm.blocked", { moduleId, reason: "no space" }); return; }
   if (getModule(moduleId).placement === "nose") { startNose(moduleId); return; }
   if (getModule(moduleId).placement === "bedBox") { startBedBox(moduleId); return; }
   if (getModule(moduleId).placement === "bedSide") { startBedSide(moduleId); return; }
-  if (getModule(moduleId).placement === "lounge") { startLounge(moduleId); return; }
+  if (getModule(moduleId).placement === "lounge") { startLounge(moduleId, extras.style); return; }
   cancelMove();
   cancelOrient();
   cancelNose();
@@ -189,16 +193,18 @@ function onFloor(p) {
  */
 function cursorPoint(clientX, clientY, { exclude = null } = {}) {
   if (ceilingMode()) {
-    // Overhead: the anchor is a feature point on a ceiling ∩ wall line, nothing else.
+    // Overhead: a feature point on a ceiling ∩ wall line, or anywhere along that line.
     const snap = nearestSnap(clientX, clientY, { exclude, filter: onCeilingLine });
-    if (!snap) return { none: true, tip: ["Overhead starts on a ceiling edge", "Click a corner where a wall meets the ceiling (or an overhead's top corner there)"] };
-    const all = allowedCeilingFaces(snap, facesOnPoint(snap));
-    const visible = facesAtPoint(snap, clientX, clientY).filter((f) => all.includes(f));
+    const edge = snap ? null : nearestCeilingEdge(clientX, clientY, { maxPx: SNAP_RADIUS_PX * uiScale() * 1.8 });
+    const pt = snap || (edge && edge.p);
+    if (!pt) return { none: true, tip: ["Overhead starts on a ceiling edge", "Click anywhere a wall meets the ceiling (or an overhead's top edge there)"] };
+    const all = allowedCeilingFaces(pt, facesOnPoint(pt));
+    const visible = facesAtPoint(snap || pt, clientX, clientY).filter((f) => all.includes(f));
     const face = preferDrawable(visible) || ceilingFace() || preferDrawable(all);
-    const walls = wallsAt(snap).map((w) => w.label.toLowerCase()).join(" / ");
+    const walls = wallsAt(pt).map((w) => w.label.toLowerCase()).join(" / ");
     return {
-      x: snap.x, y: snap.y, z: snap.z, feature: true, dirs: snap.dirs, face, faces: all,
-      tip: [`Ceiling edge · ${describePoint(snap, exclude)} · ${walls}`, all.length > 1 ? `On ${all.map((f) => f.label.toLowerCase()).join(" / ")} — move onto the face to draw on` : face ? `On ${face.label.toLowerCase()}` : null],
+      x: pt.x, y: pt.y, z: pt.z, feature: !!snap, dirs: snap ? snap.dirs : (edge && edge.dirs) || [], face, faces: all,
+      tip: [`Ceiling edge · ${snap ? describePoint(snap, exclude) : walls} · ${walls}`, all.length > 1 ? `On ${all.map((f) => f.label.toLowerCase()).join(" / ")} — move onto the face to draw on` : face ? `On ${face.label.toLowerCase()}` : null],
     };
   }
   if (placing || lounge) {
@@ -1617,11 +1623,13 @@ export function cancelBedSide() {
 
 // --- lounge placement -------------------------------------------------------------
 //
-// Floor polyline of the back / wall edge, then seat depth toward the room.
-//   path    click 2–4 floor points (I / L / U). Enter after 2+ points, or the
-//           4th click, starts the depth step. Shift keeps the next vertex on axis.
-//   depth   the cursor chooses the room side and the seat depth (type D).
-//   click / Enter creates; Esc cancels.
+// Floor polyline of the back / wall edge, then seat depth toward the room
+// (or the aisle for Parallel). Style comes from the Lounge flyout.
+//   path    click until the style has enough points (I 2, L 3, U 4, P 3).
+//           Enter pads missing vertices. Shift keeps the next vertex on axis.
+//           Parallel's third click is the opposite run, not a polyline corner.
+//   depth   the cursor chooses the room / aisle side and the seat depth (type D).
+//   click / Enter creates; Esc cancels. Height stays the preset (no extra click).
 
 function loungeRound(v) {
   return Math.round(v * 10) / 10;
@@ -1638,7 +1646,10 @@ function distToSeg(a, b, p) {
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
-function distToPath(path, p) {
+function distToPath(path, p, style) {
+  if (style === "P" && path.length >= 4) {
+    return Math.min(distToSeg(path[0], path[1], p), distToSeg(path[2], path[3], p));
+  }
   let best = Infinity;
   for (let i = 0; i < path.length - 1; i += 1) best = Math.min(best, distToSeg(path[i], path[i + 1], p));
   return best;
@@ -1648,8 +1659,14 @@ function loungeRoomInward(path) {
   if (!sp) return { x: (path[0]?.x || 0), y: (path[0]?.y || 0) + 1 };
   return { x: (sp.bounds.minX + sp.bounds.maxX) / 2, y: (sp.bounds.minY + sp.bounds.maxY) / 2 };
 }
+function loungeStyleOf() {
+  return lounge.style || "I";
+}
+function loungeNeed() {
+  return getModule(lounge.moduleId).pointsNeeded(loungeStyleOf());
+}
 
-export function startLounge(moduleId) {
+export function startLounge(moduleId, style = "I") {
   if (!job.hasSpace()) { log("lounge.blocked", { moduleId, reason: "no space" }); return; }
   const mod = getModule(moduleId);
   cancelMove();
@@ -1662,7 +1679,7 @@ export function startLounge(moduleId) {
   endRetype(false);
   if (placing) { placing = null; rb = null; lastCreated = null; clearPreview(); }
   lounge = {
-    moduleId, step: "path", path: [], hover: null,
+    moduleId, style: style || "I", step: "path", path: [], hover: null,
     depth: mod.defaultSize.D, height: mod.defaultSize.H,
     inward: null, locked: null, snapLabel: null, clamped: null, lastClient: null,
   };
@@ -1670,7 +1687,7 @@ export function startLounge(moduleId) {
   canvas.style.cursor = "crosshair";
   setDimNames(["W", "D", "H"]);
   dimBox.classList.add("hidden");
-  log("lounge.arm", { moduleId, depth: lounge.depth, height: lounge.height });
+  log("lounge.arm", { moduleId, style: lounge.style, depth: lounge.depth, height: lounge.height });
   emitMode();
 }
 
@@ -1680,10 +1697,32 @@ function loungeCursor(e) {
   if (!p || p.none) return null;
   let x = p.x;
   let y = p.y;
-  if (lounge.step === "path" && lounge.path.length && e.shiftKey) {
+  if (lounge.step === "path" && lounge.path.length) {
     const last = lounge.path[lounge.path.length - 1];
-    if (Math.abs(x - last.x) >= Math.abs(y - last.y)) y = last.y;
-    else x = last.x;
+    const style = loungeStyleOf();
+    if (style === "P" && lounge.path.length === 2) {
+      const a = lounge.path[0];
+      const b = lounge.path[1];
+      const len = loungeSegLen(a, b) || 1;
+      const nx = -(b.y - a.y) / len;
+      const ny = (b.x - a.x) / len;
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const dist = (p.x - mx) * nx + (p.y - my) * ny;
+      return { x: loungeRound(mx + nx * dist), y: loungeRound(my + ny * dist), z: 0, feature: p.feature, tip: p.tip };
+    }
+    if (e.shiftKey && lounge.path.length === 1) {
+      if (Math.abs(x - last.x) >= Math.abs(y - last.y)) y = last.y;
+      else x = last.x;
+    } else if (lounge.path.length >= 2 && (style === "L" || style === "U")) {
+      const prev = lounge.path[lounge.path.length - 2];
+      const alongX = Math.abs(last.x - prev.x) >= Math.abs(last.y - prev.y);
+      if (alongX) x = last.x;
+      else y = last.y;
+    } else if (e.shiftKey) {
+      if (Math.abs(x - last.x) >= Math.abs(y - last.y)) y = last.y;
+      else x = last.x;
+    }
   }
   return { x, y, z: 0, feature: p.feature, tip: p.tip };
 }
@@ -1691,19 +1730,27 @@ function loungeCursor(e) {
 function loungeAddVertex(p) {
   const mod = getModule(lounge.moduleId);
   const last = lounge.path[lounge.path.length - 1];
-  if (last && loungeSegLen(last, p) < mod.minSize.W - 0.5) {
+  const style = loungeStyleOf();
+  if (last && !(style === "P" && lounge.path.length === 2) && loungeSegLen(last, p) < mod.minSize.W - 0.5) {
     lounge.clamped = `minimum ${mod.minSize.W}`;
     return false;
   }
   lounge.path.push({ x: p.x, y: p.y });
   lounge.clamped = null;
-  log("lounge.vertex", { moduleId: lounge.moduleId, n: lounge.path.length, x: p.x, y: p.y, style: mod.styleFromCount(lounge.path.length) });
-  if (lounge.path.length >= 4) loungeBeginDepth("click");
+  log("lounge.vertex", { moduleId: lounge.moduleId, n: lounge.path.length, x: p.x, y: p.y, style });
+  if (lounge.path.length >= loungeNeed()) loungeBeginDepth("click");
   return true;
 }
 
 function loungeBeginDepth(how) {
   if (!lounge || lounge.path.length < 2) return;
+  const mod = getModule(lounge.moduleId);
+  const style = loungeStyleOf();
+  if (lounge.path.length < loungeNeed()) {
+    const padded = mod.restyle({ path: lounge.path, depth: lounge.depth, inwardX: lounge.inward?.x, inwardY: lounge.inward?.y, style }, style);
+    lounge.path = padded.path || lounge.path;
+  }
+  if (style === "P") lounge.path = mod.materializePath("P", lounge.path, lounge.depth);
   lounge.step = "depth";
   lounge.locked = null;
   setDimNames(["W", "D", "H"]);
@@ -1712,30 +1759,36 @@ function loungeBeginDepth(how) {
     dimLabels[k].classList.remove("focused", "locked");
     dimLabels[k].classList.toggle("hidden", k !== "D");
   }
-  log("lounge.depth", { moduleId: lounge.moduleId, how, n: lounge.path.length, path: lounge.path });
+  log("lounge.depth", { moduleId: lounge.moduleId, how, n: lounge.path.length, style, path: lounge.path });
   emitMode();
 }
 
 function loungeReadDepth(e) {
   const mod = getModule(lounge.moduleId);
+  const style = loungeStyleOf();
   let D;
   if (lounge.locked != null) D = lounge.locked;
   else if (e) {
     const p = loungeCursor(e);
     if (p) {
       lounge.hover = p;
-      const onLine = distToPath(lounge.path, p) < 5;
+      const onLine = distToPath(lounge.path, p, style) < 5;
       lounge.inward = onLine ? loungeRoomInward(lounge.path) : p;
-      D = onLine ? lounge.depth : job.snap(distToPath(lounge.path, p));
+      D = onLine ? lounge.depth : job.snap(distToPath(lounge.path, p, style));
     } else D = lounge.depth;
   } else D = lounge.depth;
   lounge.clamped = null;
   if (D < mod.minSize.D) { D = mod.minSize.D; lounge.clamped = `minimum ${mod.minSize.D}`; }
-  const inward = lounge.inward || loungeRoomInward(lounge.path);
+  if (style === "P") {
+    const gap = mod.parallelGap(lounge.path, D);
+    const maxD = Math.max(mod.minSize.D, loungeRound((gap - mod.minAisle) / 2));
+    if (D > maxD) { D = maxD; lounge.clamped = "aisle"; }
+  }
+  const inward = style === "P" ? loungeRoomInward(lounge.path) : (lounge.inward || loungeRoomInward(lounge.path));
   const sp = job.getSpace();
   if (sp) {
     while (D > mod.minSize.D) {
-      const segs = mod.segments(lounge.path, D, inward);
+      const segs = mod.segments(lounge.path, D, inward, style);
       if (!segs.length) break;
       const x0 = Math.min(...segs.map((s) => s.x0));
       const x1 = Math.max(...segs.map((s) => s.x1));
@@ -1754,33 +1807,48 @@ function loungeReadDepth(e) {
 
 function loungeBox() {
   const mod = getModule(lounge.moduleId);
+  const style = loungeStyleOf();
   const inward = lounge.inward || loungeRoomInward(lounge.path);
-  const aabb = lounge.path.length >= 2 ? mod.aabb(lounge.path, lounge.depth, inward) : null;
+  const aabb = lounge.path.length >= 2 ? mod.aabb(lounge.path, lounge.depth, inward, style) : null;
   if (!aabb) return { x0: 0, y0: 0, z0: 0, W: 1, D: 1, H: lounge.height, max: { D: lounge.depth } };
   return { x0: aabb.x0, y0: aabb.y0, z0: 0, W: aabb.x1 - aabb.x0, D: aabb.y1 - aabb.y0, H: lounge.height, max: { D: lounge.depth } };
 }
 
+function loungePreviewPath() {
+  const style = loungeStyleOf();
+  const hover = lounge.step === "path" ? lounge.hover : null;
+  if (style === "P" && lounge.step === "path" && lounge.path.length >= 2 && hover) {
+    return getModule(lounge.moduleId).materializePath("P", [...lounge.path, hover], lounge.depth);
+  }
+  return hover && lounge.step === "path" ? [...lounge.path, hover] : lounge.path;
+}
+
 function drawLounge(e) {
   const mod = getModule(lounge.moduleId);
+  const style = loungeStyleOf();
   const hover = lounge.step === "path" ? lounge.hover : null;
   const inward = lounge.inward || (lounge.path.length >= 2 ? loungeRoomInward(lounge.path) : { x: 0, y: 0 });
-  const segs = lounge.step === "depth" && lounge.path.length >= 2 ? mod.segments(lounge.path, lounge.depth, inward) : [];
-  showLoungeGhost(segs, lounge.height, lounge.path, hover, { clamped: !!lounge.clamped });
+  const preview = loungePreviewPath();
+  const segs = (lounge.step === "depth" || (style === "P" && preview.length >= 4)) && preview.length >= 2
+    ? mod.segments(preview, lounge.depth, inward, style)
+    : [];
+  const ghostPath = style === "P" && preview.length >= 4 ? preview : lounge.path;
+  showLoungeGhost(segs, lounge.height, ghostPath, style === "P" && preview.length >= 4 ? null : hover, { clamped: !!lounge.clamped, disjoint: style === "P" });
   if (lounge.step === "depth") {
     if (document.activeElement !== dimInputs.D) dimInputs.D.value = Math.round(lounge.depth);
     dimLabels.D.classList.toggle("locked", lounge.locked != null);
     positionDimInputs(loungeBox());
   }
   if (!e) return;
-  const style = mod.styleFromCount(lounge.path.length + (lounge.step === "path" && lounge.hover ? 1 : 0));
+  const label = mod.styleLabel(style);
   const lines = lounge.step === "path"
     ? [
-      lounge.path.length ? `${style} · ${lounge.path.length} point${lounge.path.length === 1 ? "" : "s"}` : "Click the back edge on the floor",
-      lounge.clamped ? `Stopped at ${lounge.clamped}` : "2 points = I · 3 = L · 4 = U · Enter after 2 to pull depth",
+      lounge.path.length ? `${label} · ${lounge.path.length} point${lounge.path.length === 1 ? "" : "s"}` : `Click the back edge (${label})`,
+      lounge.clamped ? `Stopped at ${lounge.clamped}` : (style === "P" ? "Two clicks for the first run, then the opposite lounge · Enter pulls depth" : `${loungeNeed()} clicks · Enter after 2 pads the rest and pulls depth`),
       "Shift keeps the next vertex on axis · Esc cancels",
     ]
     : [
-      `D ${Math.round(lounge.depth)} toward the room · H ${Math.round(lounge.height)}`,
+      `D ${Math.round(lounge.depth)} ${style === "P" ? "toward the aisle" : "toward the room"} · H ${Math.round(lounge.height)}`,
       lounge.clamped ? `Stopped at ${lounge.clamped}` : null,
       "Click or Enter to create · Esc cancels",
     ];
@@ -1802,8 +1870,9 @@ function finishLounge(how) {
   loungeReadDepth(null);
   const b = lounge;
   const mod = getModule(b.moduleId);
+  const style = b.style || "I";
   const inward = b.inward || loungeRoomInward(b.path);
-  const aabb = mod.aabb(b.path, b.depth, inward);
+  const aabb = mod.aabb(b.path, b.depth, inward, style);
   if (!aabb) { log("lounge.blocked", { moduleId: b.moduleId, reason: "no segments" }); return; }
   const pose = { x: aabb.x0, y: aabb.y0, z: 0, rotZ: 0 };
   const env = { W: loungeRound(aabb.x1 - aabb.x0), D: loungeRound(aabb.y1 - aabb.y0), H: b.height };
@@ -1818,12 +1887,12 @@ function finishLounge(how) {
       height: b.height,
       inwardX: loungeRound(inward.x - aabb.x0),
       inwardY: loungeRound(inward.y - aabb.y0),
-      style: mod.styleFromCount(b.path.length),
+      style,
     };
     c.pose = pose;
   });
   log("lounge.finish", {
-    moduleId: b.moduleId, id: cab.id, how, n: b.path.length, style: mod.styleFromCount(b.path.length),
+    moduleId: b.moduleId, id: cab.id, how, n: b.path.length, style,
     depth: b.depth, height: b.height, locked: b.locked, clamped: b.clamped, pose, envelope: mod.envelope(cab.params),
   });
   clearPreview();

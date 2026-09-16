@@ -456,7 +456,7 @@ export function hideGhost() {
 const loungeGhostMat = new THREE.MeshBasicMaterial({ color: 0x4f86e0, transparent: true, opacity: 0.18, depthWrite: false });
 const loungeGhostEdgeMat = new THREE.LineBasicMaterial({ color: 0x4f86e0 });
 let loungeGhost = null;
-export function showLoungeGhost(segs, height, path, hover, { clamped = false } = {}) {
+export function showLoungeGhost(segs, height, path, hover, { clamped = false, disjoint = false } = {}) {
   hideLoungeGhost();
   loungeGhostMat.color.setHex(clamped ? 0xf0a050 : 0x4f86e0);
   loungeGhostEdgeMat.color.setHex(clamped ? 0xf0a050 : 0x4f86e0);
@@ -465,9 +465,8 @@ export function showLoungeGhost(segs, height, path, hover, { clamped = false } =
     loungeGhost.add(boxMesh(s.x0, s.x1, s.y0, s.y1, 0, Math.max(height, 1), loungeGhostMat));
     loungeGhost.add(boxEdges(s.x0, s.x1, s.y0, s.y1, 0, Math.max(height, 1), loungeGhostEdgeMat));
   }
-  const pts = [...(path || [])];
-  if (hover) pts.push(hover);
-  if (pts.length >= 2) {
+  const addLine = (pts) => {
+    if (pts.length < 2) return;
     const arr = [];
     for (const p of pts) arr.push(p.x, p.y, 1);
     const geo = new THREE.BufferGeometry();
@@ -475,6 +474,19 @@ export function showLoungeGhost(segs, height, path, hover, { clamped = false } =
     const line = new THREE.Line(geo, loungeGhostEdgeMat);
     line.renderOrder = 8;
     loungeGhost.add(line);
+  };
+  if (disjoint) {
+    const pts = [...(path || [])];
+    if (hover && pts.length === 2) {
+      addLine(pts);
+      addLine([hover, hover]);
+    } else {
+      for (let i = 0; i + 1 < pts.length; i += 2) addLine([pts[i], pts[i + 1]]);
+    }
+  } else {
+    const pts = [...(path || [])];
+    if (hover) pts.push(hover);
+    addLine(pts);
   }
   scene.add(loungeGhost);
 }

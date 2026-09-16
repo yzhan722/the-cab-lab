@@ -1,6 +1,6 @@
-/** Lounge v0 — floor polyline of I / L / U box segments. Not a Fusion lounge paste. */
+/** Lounge v0 — floor polyline of I / L / U, or Parallel as two facing I runs. Not a Fusion lounge paste. */
 
-export type LoungeStyle = "I" | "L" | "U";
+export type LoungeStyle = "I" | "L" | "U" | "P";
 
 export interface LoungePoint {
   x: number;
@@ -8,14 +8,16 @@ export interface LoungePoint {
 }
 
 export interface LoungeParams {
-  /** Polyline of the back (wall) edge, local XY. First point at origin after placement shift. */
+  /** Polyline of the back (wall) edge, local XY. Parallel uses two pairs (4 points). */
   path?: LoungePoint[];
-  /** Seat depth toward the room (mm). */
+  /** Seat depth toward the room / aisle (mm). */
   depth?: number;
   height?: number;
   /** A local point on the room side of the polyline (chooses the offset side). */
   inwardX?: number;
   inwardY?: number;
+  /** I / L / U / P. Parallel is two facing I segments, not inferred from point count. */
+  style?: LoungeStyle | "PARALLEL";
   panelThickness?: number;
   frontPanelThickness?: number;
   carcassColor?: string;

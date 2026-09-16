@@ -18,9 +18,15 @@ import {
   generateLounge,
   loungeAabb,
   loungeBounds,
+  loungeRestyle,
   loungeSegments,
   loungeStyleFromCount,
+  materializePath,
+  parallelGap,
+  pointsNeeded,
+  styleLabel,
   LOUNGE_MIN,
+  LOUNGE_MIN_AISLE,
   LOUNGE_DEFAULT_HEIGHT,
   LOUNGE_DEFAULT_DEPTH,
 } from "./gen/loungeGenerator.js";
@@ -694,21 +700,28 @@ const overheadCabinet = {
 };
 
 /**
- * Lounge v0: I / L / U floor polyline (the wall/back edge) offset toward the
- * room by seat depth. Placement "lounge" (interact.js). Face / R refused.
+ * Lounge v0: I / L / U floor polyline, or Parallel as two facing I runs.
+ * Placement "lounge" (interact.js). Face / R refused.
  */
 const loungeGenerator = {
   id: "loungeGenerator",
   label: "Lounge",
-  sub: "I / L / U on the floor",
+  sub: "I / L / U / Parallel",
+  panel: "lounge",
   placement: "lounge",
   noOrient: true,
   handles: ["D", "H"],
   defaultSize: { W: 2000, D: LOUNGE_DEFAULT_DEPTH, H: LOUNGE_DEFAULT_HEIGHT },
   minSize: { W: LOUNGE_MIN.segment, D: LOUNGE_MIN.depth, H: LOUNGE_MIN.height },
   segments: loungeSegments,
-  aabb: loungeAabb,
+  aabb: (path, depth, inward, style) => loungeAabb(path, depth, inward, style),
   styleFromCount: loungeStyleFromCount,
+  pointsNeeded,
+  styleLabel,
+  restyle: loungeRestyle,
+  materializePath,
+  parallelGap,
+  minAisle: LOUNGE_MIN_AISLE,
 
   defaults(W, D, H, materials) {
     const { finish, stock } = materialsOf(materials);
@@ -737,7 +750,8 @@ const loungeGenerator = {
     const path = params.path || [];
     const depth = params.depth ?? LOUNGE_DEFAULT_DEPTH;
     const height = params.height ?? LOUNGE_DEFAULT_HEIGHT;
-    const b = loungeBounds(path, depth, { x: params.inwardX ?? 0, y: params.inwardY ?? depth }, height);
+    const style = params.style === "P" || params.style === "PARALLEL" ? "P" : params.style;
+    const b = loungeBounds(path, depth, { x: params.inwardX ?? 0, y: params.inwardY ?? depth }, height, style);
     if (b.W <= 0 || b.D <= 0) return { W: LOUNGE_MIN.segment, D: depth, H: height };
     return b;
   },
@@ -749,7 +763,8 @@ const loungeGenerator = {
       const path = params.path || [];
       const depth = params.depth ?? LOUNGE_DEFAULT_DEPTH;
       const height = params.height ?? LOUNGE_DEFAULT_HEIGHT;
-      const env = loungeBounds(path, depth, { x: params.inwardX ?? 0, y: params.inwardY ?? depth }, height);
+      const style = params.style === "P" || params.style === "PARALLEL" ? "P" : params.style;
+      const env = loungeBounds(path, depth, { x: params.inwardX ?? 0, y: params.inwardY ?? depth }, height, style);
       next.depth = round1(Math.max(LOUNGE_MIN.depth, depth + (D - (env.D || depth))));
     }
     return next;
@@ -769,6 +784,7 @@ const uShapeOverheadCabinet = {
   id: "uShapeOverheadCabinet",
   label: "U overhead",
   sub: "three OHC runs",
+  panel: "uohc",
   placement: "ceiling",
   noOrient: true,
   growsDown: true,
@@ -842,7 +858,11 @@ const uShapeOverheadCabinet = {
   },
 
   setDivider(params, result, index, pos) {
-    const zones = (params.backZones || []).map((z) => ({ ...z }));
+    return this.setRunDivider(params, "backZones", index, pos);
+  },
+
+  setRunDivider(params, run, index, pos) {
+    const zones = (params[run] || []).map((z) => ({ ...z }));
     const left = zones[index];
     const right = zones[index + 1];
     if (!left || !right) return params;
@@ -851,7 +871,7 @@ const uShapeOverheadCabinet = {
     const x = Math.max(x0 + MIN_ZONE_WIDTH, Math.min(x0 + total - MIN_ZONE_WIDTH, Math.round(pos)));
     left.width = round1(x - x0);
     right.width = round1(total - left.width);
-    return { ...params, backZones: zones };
+    return { ...params, [run]: zones };
   },
 
   zoneTypes: [
@@ -886,6 +906,17 @@ export const MODULE_GROUPS = [
       { moduleId: "bedroom", label: "Body", sub: "nose volume" },
       { moduleId: "bedBox", label: "Bed Box", sub: "bed base · needs the body" },
       { moduleId: "bedSideTable", label: "Bed Side Table", sub: "beside the bed · needs the body" },
+    ],
+  },
+  {
+    id: "lounge",
+    label: "Lounge",
+    sub: "I / L / U / Parallel",
+    items: [
+      { moduleId: "loungeGenerator", style: "I", label: "I", sub: "one run · two clicks" },
+      { moduleId: "loungeGenerator", style: "L", label: "L", sub: "two runs · three clicks" },
+      { moduleId: "loungeGenerator", style: "U", label: "U", sub: "three runs · four clicks" },
+      { moduleId: "loungeGenerator", style: "P", label: "Parallel", sub: "two facing · three clicks" },
     ],
   },
 ];

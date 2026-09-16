@@ -37,7 +37,7 @@ function addBox(moduleId, world, side) {
   return job.addCabinet(moduleId, fit.pose, { W: fit.W, D: fit.D, H: fit.H });
 }
 
-function loungePath(cab, path, depth, height, inward) {
+function loungePath(cab, path, depth, height, inward, style) {
   job.setParams(cab.id, {
     ...cab.params,
     path,
@@ -45,6 +45,7 @@ function loungePath(cab, path, depth, height, inward) {
     height,
     inwardX: inward.x,
     inwardY: inward.y,
+    ...(style ? { style } : {}),
   });
 }
 
@@ -99,6 +100,7 @@ export const QA_SHOTS = [
   { tag: "lounge-I", moduleId: "loungeGenerator", style: "I" },
   { tag: "lounge-L", moduleId: "loungeGenerator", style: "L" },
   { tag: "lounge-U", moduleId: "loungeGenerator", style: "U" },
+  { tag: "lounge-P", moduleId: "loungeGenerator", style: "P" },
   { tag: "overheadCabinet", moduleId: "overheadCabinet" },
   { tag: "uShapeOverheadCabinet", moduleId: "uShapeOverheadCabinet" },
 ];
@@ -124,6 +126,9 @@ export function buildQaModule(shot) {
     target = addBox("tallCabinet", { x0: 200, y0: 200, z0: 0, W: 600, D: 584 + door, H: 2000 }, { axis: "y", dir: -1 });
   } else if (shot.moduleId === "kitchenCabinet") {
     target = addBox("kitchenCabinet", { x0: 200, y0: 200, z0: 0, W: 800, D: 560 + door, H: 870 }, { axis: "y", dir: -1 });
+  } else if (shot.moduleId === "loungeGenerator" && shot.style === "P") {
+    target = addBox("loungeGenerator", { x0: 200, y0: 200, z0: 0, W: 2000, D: 1800, H: 420 }, { axis: "y", dir: -1 });
+    loungePath(target, [{ x: 0, y: 0 }, { x: 2000, y: 0 }, { x: 0, y: 1800 }, { x: 2000, y: 1800 }], 600, 420, { x: 1000, y: 900 }, "P");
   } else if (shot.moduleId === "loungeGenerator" && shot.style === "U") {
     target = addBox("loungeGenerator", { x0: 200, y0: 200, z0: 0, W: 2000, D: 1800, H: 420 }, { axis: "y", dir: -1 });
     loungePath(target, [{ x: 0, y: 0 }, { x: 0, y: 1800 }, { x: 2000, y: 1800 }, { x: 2000, y: 0 }], 600, 420, { x: 1000, y: 900 });

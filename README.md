@@ -4,10 +4,10 @@ Cabinet CAD workspace. Metric (mm), Z up, right-handed. Electron + Three.js.
 
 Workflow: **step 1 define the space** (Box, or Vehicle = box rear + side-profile nose; Floor plan later) → pick a **module** on the left → drag its **box** on the floor.
 The box *is* the generator's outer size. Pull its faces to change W / D / H, drag the orange bars to move
-zone boundaries, edit details in the right panel. Boards are always regenerated from `job.json`, never edited.
+zone boundaries, or click / drag the **2D schematic** in the right panel. Boards are always regenerated from `job.json`, never edited.
 
 Current state: Small, Tall v0, Base v0, Overhead and U overhead cabinets wired end to end (place, move, rotate, resize, zones, checks, board table, save / load, undo).
-Bedroom (the vehicle's nose slab, for now one solid volume) is wired with its own placement flow. **Bed Box** and **Bed Side Table** attach to the body. **Lounge** is a floor polyline (I / L / U) then seat depth toward the room.
+Bedroom (the vehicle's nose slab, for now one solid volume) is wired with its own placement flow. **Bed Box** and **Bed Side Table** attach to the body. **Lounge** is a rail flyout (I / L / U / Parallel): a floor polyline then seat depth toward the room (Parallel is two facing I runs with an aisle).
 
 ## Run
 
@@ -83,8 +83,8 @@ desktop shortcut works without a build step; run `npm run build:generators` afte
   restart, outside the repo); new Vehicle spaces start from it. **Reset to built-in** removes it. The **Side** view
   looks across the van so the profile reads as drawn.
 - **Overhead** (OHC, `generators/overheadCabinet/generator.ts`): hangs from the ceiling with its back on a wall. The
-  anchor can only be a feature point on a **ceiling ∩ wall line** (a top corner of the room, an overhead's top-back
-  corner, a plane ∩ ceiling corner); other points are refused with a hint. **W runs along that wall**, the doors face
+  anchor can only be on a **ceiling ∩ wall line** (anywhere along that edge: a top corner of the room, a mid-wall
+  point, an overhead's top-back edge, a plane ∩ ceiling corner); other points are refused with a hint. **W runs along that wall**, the doors face
   the room, the top stays on the ceiling (the box only grows down). Three faces take the 2D rectangle: the ceiling
   (W×D, pull H down), the wall itself (W×H, pull D into the room) or a face perpendicular to the wall — a neighbour's
   side, or the adjacent wall at a corner (D×H, pull W). At a corner both walls qualify; the box decides at the end:
@@ -109,7 +109,7 @@ desktop shortcut works without a build step; run `npm run build:generators` afte
   height includes the plinth (default 150 mm, set back 50 mm). Sides are full-height with a front-bottom notch;
   `PLINTH_FRONT` closes the kick; the carcass floor (BOTTOM) sits on the plinth; doors start above it. Same three-step
   floor placement as Small. No V-panel slots, wheel arch or B-system in v0.
-- **Bedroom** is a rail group: hovering it opens a flyout with **Body**, **Bed Box** and **Bed Side Table**. Groups are declared in `MODULE_GROUPS` in `renderer/modules.js`.
+- **Bedroom** is a rail group: hovering it opens a flyout with **Body**, **Bed Box** and **Bed Side Table**. **Lounge** is a rail group with **I / L / U / Parallel**. Groups are declared in `MODULE_GROUPS` in `renderer/modules.js`.
 - **Bedroom › Bed Box** (one per vehicle, needs the Body first — the flyout item is disabled until it exists): the bed
   base as one solid volume, glued to the Body's room-side face, centred on the van's centre line and symmetric about
   it; height = tunnel boot height (420 until the boot is defined on the Body). Two steps: **width** — a 2D line on the
@@ -125,10 +125,7 @@ desktop shortcut works without a build step; run `npm run build:generators` afte
   at the Bed Box, or the van centre line if there is no bed), type `W`; hovering a side that already has a table
   edits it; **length** — pull into the room from the body face. `pose` is `rotZ 180`, `x` = wall + W (left) or the
   right wall. Face and `R` are refused. Generator `generators/bedSideTable/generator.ts`.
-- **Lounge** (`loungeGenerator`, `generators/loungeGenerator/generator.ts`): a floor polyline of the back / wall edge,
-  then seat depth toward the room. 2 points = I (one box), 3 = L, 4 = U (three I segments). Click vertices on the
-  floor (Shift keeps the next one on axis); Enter after two points, or the fourth click, pulls the seat into the
-  room (type D). Boards are XY plates of height H. Face and `R` are refused. Pose is `rotZ 0` at the AABB min corner.
+- **Lounge** (`loungeGenerator`, `generators/loungeGenerator/generator.ts`): pick **I / L / U / Parallel** from the Lounge flyout, then click the back / wall edge on the floor and pull seat depth toward the room (type D). I = two clicks, L = three (90° return), U = four, Parallel = two clicks for the first run then the opposite lounge (two facing I segments, aisle in between). Enter after two points pads missing vertices for the chosen style. Clicking a style on the flyout while a lounge is selected restyles it (missing points are filled in). Height stays the preset (no extra click). Boards are XY plates of height H. Face and `R` are refused. Pose is `rotZ 0` at the AABB min corner. The right panel shows a **plan schematic**; dragging a grip writes `depth`.
 - **U overhead** (`uShapeOverheadCabinet`, `generators/uShapeOverheadCabinet/generator.ts`): three `generateOverheadCabinet`
   runs in one ceiling box (back along X at the far wall, left and right along Y). Opening at local y = 0. Placement is
   the same ceiling ∩ wall flow as Overhead; the drawn box is the outer W×D×H. Face and `R` are refused; H grows down.

@@ -4,7 +4,7 @@ import { initDock } from "./dock.js";
 import * as job from "./job.js";
 import { MODULES, MODULE_GROUPS, PLANNED_MODULES } from "./modules.js";
 import { syncCabinets, syncPlanes } from "./cabinets3d.js";
-import { armPlacement, disarm, onModeChange, getPlacingModule, getMode, startMove, startOrient, startPlane } from "./interact.js";
+import { armPlacement, disarm, onModeChange, getPlacingModule, getLoungeStyle, getMode, startMove, startOrient, startPlane } from "./interact.js";
 import { renderPanel } from "./panel.js";
 import { openSpaceDialog, isOpen as spaceDialogOpen } from "./spaceDialog.js";
 import { loadSettings } from "./settings.js";
@@ -21,17 +21,27 @@ const list = $("#moduleList");
 const rail = $("#leftrail");
 const grouped = new Set(MODULE_GROUPS.flatMap((g) => g.items.map((i) => i.moduleId).filter(Boolean)));
 
-function moduleButton(mod, label = mod.label, sub = mod.sub) {
+function moduleButton(mod, label = mod.label, sub = mod.sub, extras = {}) {
   const btn = document.createElement("button");
   btn.className = "rail-item";
   btn.dataset.module = mod.id;
+  if (extras.style) btn.dataset.style = extras.style;
   if (mod.requires) btn.dataset.requires = mod.requires;
   btn.innerHTML = `<span class="rail-name"></span><span class="rail-sub"></span>`;
   $(".rail-name", btn).textContent = label;
   $(".rail-sub", btn).textContent = sub;
   btn.addEventListener("click", () => {
-    if (getPlacingModule() === mod.id) disarm();
-    else armPlacement(mod.id);
+    const same = getPlacingModule() === mod.id && (!extras.style || getLoungeStyle() === extras.style);
+    if (same) { disarm(); return; }
+    const sel = job.getSelected();
+    if (extras.style && sel && sel.moduleId === mod.id && getPlacingModule() !== mod.id) {
+      if ((sel.params.style || "I") !== extras.style) {
+        job.setParams(sel.id, mod.restyle(sel.params, extras.style));
+        log("lounge.style", { id: sel.id, style: extras.style, n: (sel.params.path || []).length });
+        return;
+      }
+    }
+    armPlacement(mod.id, extras);
   });
   return btn;
 }
@@ -72,7 +82,7 @@ for (const group of MODULE_GROUPS) {
   fly.className = "rail-flyout hidden";
   fly.append(Object.assign(document.createElement("div"), { className: "rail-title", textContent: group.label }));
   for (const item of group.items) {
-    if (item.moduleId && MODULES[item.moduleId]) fly.append(moduleButton(MODULES[item.moduleId], item.label, item.sub));
+    if (item.moduleId && MODULES[item.moduleId]) fly.append(moduleButton(MODULES[item.moduleId], item.label, item.sub, item.style ? { style: item.style } : {}));
     else fly.append(plannedButton(item.label, item.sub));
   }
   const open = () => {
@@ -115,13 +125,14 @@ function refreshRail() {
       b.classList.toggle("active", !!placing && group.items.some((i) => i.moduleId === placing));
       return;
     }
-    b.classList.toggle("active", b.dataset.module ? b.dataset.module === placing : (!placing && !sel && b.hasAttribute("data-space")));
+    const styleOn = !b.dataset.style || b.dataset.style === (getLoungeStyle() || job.getSelected()?.params?.style || "");
+    b.classList.toggle("active", b.dataset.module ? b.dataset.module === placing && styleOn : (!placing && !sel && b.hasAttribute("data-space")));
   });
   const mode = getMode();
   const HINTS = {
     armed: placing
       ? MODULES[placing].placement === "ceiling"
-        ? `Placing ${MODULES[placing].label} — click a corner where a wall meets the ceiling · W runs along that wall · draw on the ceiling, the wall or a side face · Esc to stop`
+        ? `Placing ${MODULES[placing].label} — click anywhere on a ceiling edge (where a wall meets the ceiling) · W runs along that wall · draw on the ceiling, the wall or a side face · Esc to stop`
         : `Placing ${MODULES[placing].label} — click a point on the floor to start · Shift+click repeats the last size · digits re-size the last box · Esc to stop`
       : "",
     face: "Draw the rectangle on this face · Tab / digits type its two sizes · click the opposite corner · Enter creates with the preset depth",
@@ -136,7 +147,7 @@ function refreshRail() {
     "bedbox.depth": "Bed Box — length: pull into the room from the body face · snaps to cabinet faces · type D · click or Enter to create · Esc cancels",
     "bedside.width": "Bed Side Table — move to a side wall; width grows from that wall · type W · click or Enter to lock · Esc cancels",
     "bedside.depth": "Bed Side Table — length: pull into the room from the body face · type D · click or Enter to create · Esc cancels",
-    "lounge.path": "Lounge — click 2–4 floor points along the back edge (I / L / U) · Enter after 2 starts the depth · Shift keeps the next vertex on axis · Esc cancels",
+    "lounge.path": "Lounge — click the back edge on the floor · I two clicks, L three, U four, Parallel three (opposite run) · Enter pads missing points and pulls depth · Shift keeps the next vertex on axis · Esc cancels",
     "lounge.depth": "Lounge — pull the seat toward the room · type D · click or Enter to create · Esc cancels",
     "plane.pick": "Plane — click a wall or a cabinet face to offset from · Esc cancels",
     "plane.offset": "Plane — pull a parallel copy into the room · type Offset · snaps to faces · click or Enter to place · Esc cancels",

@@ -2,6 +2,7 @@
 // selected cabinet's params. Every edit writes into job.js and regenerates.
 import * as job from "./job.js";
 import { getModule, fitZones, MIN_ZONE_HEIGHT, MIN_ZONE_WIDTH, fitZoneWidths, DEFAULT_ARM_DEPTH, MIN_ARM_RUN } from "./modules.js";
+import { applySchematicGrip, schematicSpec, schematicView, usesGeometryPanel } from "./schematic.js";
 import { getSpaceKind } from "./spaces.js";
 import { openSpaceDialog } from "./spaceDialog.js";
 import { poseFits, highlightBoard, getHighlightedBoard, onBoardHighlight } from "./cabinets3d.js";
@@ -165,6 +166,50 @@ function renderSpace() {
 
 const ohcSel = { cabId: null, indices: [] }; // zone selection, kept across re-renders
 let ohcDrag = null; // { cabId, refresh } while a strip boundary is dragged
+const geoSel = { cabId: null, sel: null };
+let schDrag = null; // { cabId, before, refresh } while a schematic grip is dragged
+
+function schematicBlock(cab, mod, result) {
+  if (!usesGeometryPanel(mod)) return null;
+  if (geoSel.cabId !== cab.id) { geoSel.cabId = cab.id; geoSel.sel = null; }
+  const spec = schematicSpec(cab, mod, result, geoSel.sel);
+  if (!spec) return null;
+  const view = schematicView(spec, {
+    onSelect(sel) {
+      geoSel.sel = sel;
+      log("schematic.select", { id: cab.id, sel });
+      renderPanel();
+    },
+    onDragStart() {
+      schDrag = {
+        cabId: cab.id,
+        before: job.snapshot(),
+        refresh: () => {
+          const now = job.getSelected();
+          if (!now) return;
+          view.update(schematicSpec(now, getModule(now.moduleId), job.resultFor(now.id), geoSel.sel));
+        },
+      };
+    },
+    onDrag(grip, pos) {
+      const now = job.getSelected();
+      if (!now) return;
+      const next = applySchematicGrip(now, job.resultFor(now.id), grip, pos);
+      job.setParams(cab.id, next, { history: false });
+    },
+    onDragEnd() {
+      const changed = schDrag ? job.commitSnapshot(schDrag.before) : false;
+      log("schematic.drag", { id: cab.id, changed });
+      schDrag = null;
+      renderPanel();
+    },
+  });
+  return el("div", { class: "panel-section" }, [
+    el("div", { class: "sec-title", text: spec.title }),
+    el("div", { class: "sch-hint", text: spec.hint }),
+    view.el,
+  ]);
+}
 
 function ohcSelected(cabId) {
   if (ohcSel.cabId !== cabId) { ohcSel.cabId = cabId; ohcSel.indices = []; }
@@ -391,6 +436,10 @@ function renderOverhead(cab, mod, result, shared) {
 // --- cabinet ---------------------------------------------------------------------
 
 function renderCabinet(cab) {
+  if (schDrag && schDrag.cabId === cab.id && panel.querySelector(".sch-view")) {
+    schDrag.refresh();
+    return;
+  }
   const mod = getModule(cab.moduleId);
   const result = job.resultFor(cab.id);
   const env = mod.envelope(cab.params);
@@ -543,6 +592,7 @@ function renderCabinet(cab) {
       el("div", { class: "panel-title", text: mod.label }),
       el("div", { class: "panel-sub", text: `${cab.id} · ${p.style || "I"} · ${result?.boards?.length || 0} boards` }),
     ]),
+    schematicBlock(cab, mod, result),
     numbersFold(sizeSummary(env, result), [
       section("Seat", [
         numField("Seat depth (mm)", p.depth ?? env.D, (v) => job.setParams(cab.id, { ...p, depth: Math.max(mod.minSize.D, v) })),
@@ -551,7 +601,7 @@ function renderCabinet(cab) {
       section("Envelope", [
         el("div", { class: "kv" }, [el("span", { text: "Width" }), el("b", { text: `${Math.round(env.W)} mm` })]),
         el("div", { class: "kv" }, [el("span", { text: "Depth" }), el("b", { text: `${Math.round(env.D)} mm` })]),
-        el("div", { class: "empty small", text: "Width follows the floor polyline. Redraw the lounge to change the I / L / U path." }),
+        el("div", { class: "empty small", text: "Width follows the floor polyline. Pick I / L / U / Parallel on the Lounge flyout to change style (missing points are filled in)." }),
       ]),
       section("Position", [
         numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
@@ -578,6 +628,7 @@ function renderCabinet(cab) {
       el("div", { class: "panel-title", text: `${mod.label} cabinet` }),
       el("div", { class: "panel-sub", text: `${cab.id} · three OHC runs · opening at the front · ${result?.boards?.length || 0} boards` }),
     ]),
+    schematicBlock(cab, mod, result),
     numbersFold(sizeSummary(env, result), [
       section("Outer size (= box)", [
         numField("Width (mm)", env.W, setEnv("W")),
@@ -612,6 +663,7 @@ function renderCabinet(cab) {
       el("div", { class: "panel-title", text: `${mod.label} cabinet` }),
       el("div", { class: "panel-sub", text: `${cab.id} · ${result?.boards?.length || 0} boards` }),
     ]),
+    schematicBlock(cab, mod, result),
     numbersFold(sizeSummary(env, result), [
       section("Outer size (= box)", [
         numField("Width (mm)", env.W, setEnv("W")),
