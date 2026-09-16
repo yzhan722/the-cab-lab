@@ -784,11 +784,10 @@ function addVerticalBoards(boards, params, debug, ch) {
   const pt = debug.panelThickness;
   const cabinetWidth = Number(params.cabinetWidth);
   const rspT = debug.rightSidePanelThickness;
-  const fpt = debug.frontFaceAllowance;
   const midDepth = debug.midDepth;
-  const carcassY0 = fpt;
-  const carcassY1 = fpt + midDepth;
-  const rearY0 = carcassY0 + Math.max(0, midDepth - 150);
+  const carcassY0 = 0;
+  const carcassY1 = midDepth;
+  const rearY0 = Math.max(0, midDepth - 150);
   const rightV0 = rspT > 0 ? cabinetWidth - rspT : cabinetWidth - pt;
   const rightV1 = rspT > 0 ? cabinetWidth - rspT + pt : cabinetWidth;
   boards.push(
@@ -1021,7 +1020,6 @@ function applyCoreBoardXOffset(boards, debug, params) {
 function updateSidePanelOverlapAudit(boards, debug, validation) {
   const sidePanels = boards.filter((item) => item.category === "side_panel" && (item.id === "SidePanel_L" || item.id === "SidePanel_R"));
   const verticalBoards = boards.filter((item) => ["V1", "V2", "V3", "V4"].includes(item.id));
-  const fpt = debug.frontFaceAllowance;
   const bboxOf = (item) => ({
     x0: item.x0,
     x1: item.x1,
@@ -1040,16 +1038,16 @@ function updateSidePanelOverlapAudit(boards, debug, validation) {
     const verticalId = sidePanel.id === "SidePanel_L" ? "V1" : "V2";
     const verticalBoard = verticalBoards.find((item) => item.id === verticalId);
     if (!verticalBoard || !sharesXSlab(sidePanel, verticalBoard)) continue;
-    const expectedFrontY = -fpt;
-    const expectedCarcassY0 = fpt;
+    const expectedFrontY = -debug.frontFaceAllowance;
+    const expectedCarcassY0 = 0;
     if (Math.abs(sidePanel.y0 - expectedFrontY) > 0.01) {
       validation?.warnings.push(
-        `${sidePanel.id} y0 ${sidePanel.y0} differs from expected front wrap ${expectedFrontY} (FPT ${fpt}).`
+        `${sidePanel.id} y0 ${sidePanel.y0} differs from expected front wrap ${expectedFrontY} (FPT ${debug.frontFaceAllowance}).`
       );
     }
     if (Math.abs(verticalBoard.y0 - expectedCarcassY0) > 0.01) {
       validation?.warnings.push(
-        `${verticalId} y0 ${verticalBoard.y0} differs from expected carcass start ${expectedCarcassY0} (FPT ${fpt}).`
+        `${verticalId} y0 ${verticalBoard.y0} differs from expected carcass start ${expectedCarcassY0}.`
       );
     }
   }
@@ -1219,8 +1217,8 @@ function addVBoardSideProfileSkeletons(boards, features, params, debug, validati
         v34AvoidanceCutout(params, avoidance),
         true
       );
-      vBoard.profileVector = rearStileProfile;
       vBoard.cutProfileVector = rearStileProfile;
+      vBoard.profileVector = cabinetYzFromBoardLocal(vBoard, rearStileProfile);
       vBoard.notes = [
         ...(vBoard.notes ?? []).filter((note) => note !== "V3/V4 exact geometry deferred"),
         "Style 1 rear-stile profile implemented; rear top/bottom L-slot refinements deferred."
@@ -1328,6 +1326,9 @@ function buildV12CombinedSideProfileVector(board2, params, cabinetHeight, valida
     );
   }
   return points;
+}
+function cabinetYzFromBoardLocal(board2, local) {
+  return local.map((point) => ({ y: board2.y0 + point.y, z: board2.z0 + point.z }));
 }
 function buildV34Style1RearStileProfileVector(board2, cabinetHeight, validation, avoidanceCutout, hasStyle2TopNotch = false) {
   const slots = (board2.profileFeatures ?? []).filter((feature) => feature.type === "zi_slot" && feature.boundaryType === "full_zi").sort((a, b) => b.z1 - a.z1);

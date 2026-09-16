@@ -62,7 +62,29 @@ function testPinsFusionSha(): void {
 function testGeneralTallOracle(): void {
   const a = nativeGt(defaultTallParams as never);
   const b = oracleGt(defaultTallParams as never);
-  assert.deepEqual(fingerprint(a.boards), fingerprint(b.boards));
+  // Cab Lab corrects the pinned Fusion V-board Y origin: all structural
+  // connections use 0..midDepth, while the pinned source adds FPT only to
+  // V1..V4 and disconnects V3/V4 from H13/H24 by exactly FPT.
+  const vIds = new Set(["V1", "V2", "V3", "V4"]);
+  assert.deepEqual(
+    fingerprint(a.boards.filter((board) => !vIds.has(String(board.id)))),
+    fingerprint(b.boards.filter((board) => !vIds.has(String(board.id)))),
+  );
+  const nativeV = fingerprint(a.boards.filter((board) => vIds.has(String(board.id))));
+  const oracleV = fingerprint(b.boards.filter((board) => vIds.has(String(board.id))));
+  assert.deepEqual(
+    nativeV.map(({ y0: _y0, y1: _y1, ...board }) => board),
+    oracleV.map(({ y0: _y0, y1: _y1, ...board }) => board),
+  );
+  const midDepth = Number(defaultTallParams.cabinetDepth) - Number(defaultTallParams.frontFaceAllowance);
+  for (const board of nativeV) {
+    const rear = board.id === "V3" || board.id === "V4";
+    assert.deepEqual(
+      [board.y0, board.y1],
+      rear ? [midDepth - 150, midDepth] : [0, midDepth],
+      `${board.id} must use the structural connection Y range`,
+    );
+  }
   assert.deepEqual(a.validation.errors, b.validation.errors);
 }
 

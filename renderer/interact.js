@@ -22,7 +22,7 @@ import { getPreset } from "./presets.js";
 import {
   pickables, groupFor, envelopeBox, envelopeFootprint, poseFits, setHandleHover,
   showGhost, showGhosts, hideGhost, showNoseGhost, showWidthRect, hideWidthRect, showCPlanePreview, hideCPlanePreview, showSnapMarker, hideSnapMarker, showInference, hideInference, showAlignLines, hideAlignLines,
-  showFaceHint, hideFaceHint, flashFaceHint,
+  showFaceHint, hideFaceHint, flashFaceHint, highlightBoard, getHighlightedBoard,
 } from "./cabinets3d.js";
 import {
   nearestSnap, nearestInference, pointOnLine, toClient, nearestFaceAlign, nearestAxisAlign, describePoint, faceGuide,
@@ -30,6 +30,7 @@ import {
   INFER_BAND_PX, INFER_RELEASE_PX, AXIS_DIRS, uiScale,
 } from "./snap.js";
 import { showTip, hideTip } from "./hud.js";
+import { revealPane } from "./dock.js";
 import { clearHeightAt, minClearHeight, maxClearHeight, roofName, slicePlane } from "./spaces.js";
 import { log, traceSample, flushTrace, clearTrace } from "./log.js";
 import { loungeDraft, nextHover, pointsNeeded, styleLabel, LOUNGE_MIN_DEPTH } from "./loungePlace.js";
@@ -2321,7 +2322,7 @@ canvas.addEventListener("pointerdown", (e) => {
     beginViewDrag(e, () => job.select(null));
     return;
   }
-  const { kind, cabId, handle, planeId } = hit.object.userData;
+  const { kind, cabId, handle, planeId, boardId } = hit.object.userData;
   if (kind === "cplane") { beginViewDrag(e, () => job.select(planeId)); return; }
   const cab = job.getJob().cabinets.find((c) => c.id === cabId);
   if (!cab) return;
@@ -2346,7 +2347,13 @@ canvas.addEventListener("pointerdown", (e) => {
     return;
   }
 
-  beginViewDrag(e, () => job.select(cabId));
+  beginViewDrag(e, () => {
+    job.select(cabId);
+    if (kind === "board" && boardId) {
+      highlightBoard(cabId, boardId, { scroll: true });
+      revealPane("boards");
+    } else highlightBoard(null);
+  });
 });
 
 function hoverArmed(e, prefix) {
@@ -2721,6 +2728,7 @@ window.addEventListener("keydown", (e) => {
     if (move) cancelMove();
     else if (cplane) cancelPlane();
     else if (placing || lounge) disarm();
+    else if (getHighlightedBoard()) highlightBoard(null);
     else job.select(null);
     return;
   }

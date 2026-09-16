@@ -32,6 +32,15 @@ function typeFill(type) {
   return FILLS[type] || "#e5f2ff";
 }
 
+/** Pixel viewBox for the 2D schematic. Height is capped so a tall cabinet cannot dominate the panel. */
+export function schematicFrame(widthMm, heightMm) {
+  const viewW = 520;
+  const wMm = Math.max(widthMm || 1, 1);
+  const hMm = Math.max(heightMm || 1, 1);
+  const viewH = Math.max(140, Math.min(280, Math.round(viewW * (hMm / wMm))));
+  return { viewW, viewH };
+}
+
 function svgEl(tag, attrs = {}, children = []) {
   const e = document.createElementNS(SVG_NS, tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -74,8 +83,7 @@ export function schematicView(spec, handlers = {}) {
     const pad = 28;
     const wMm = Math.max(s.widthMm || 1, 1);
     const hMm = Math.max(s.heightMm || 1, 1);
-    const viewW = 520;
-    const viewH = Math.max(160, Math.round(520 * (hMm / wMm)));
+    const { viewW, viewH } = schematicFrame(wMm, hMm);
     const scale = Math.min((viewW - pad * 2) / wMm, (viewH - pad * 2) / hMm);
     const bodyW = wMm * scale;
     const bodyH = hMm * scale;

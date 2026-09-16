@@ -6,16 +6,16 @@ import { withKitchenVPanelPrefs } from "./displayBoards.js";
 import { withTallFridgeDefaults, loungeWithStyle } from "./panelDefaults.js";
 import { getSpaceKind } from "./spaces.js";
 import { openSpaceDialog } from "./spaceDialog.js";
-import { poseFits } from "./cabinets3d.js";
+import { poseFits, highlightBoard, getHighlightedBoard, onBoardHighlight } from "./cabinets3d.js";
 import { describeMaterials, thickness } from "./materials.js";
 import { sideOfRotZ, sideLabel } from "./interact.js";
 import { log } from "./log.js";
 import { schematicView, schematicSpec, applySchematicGrip, usesGeometryPanel } from "./schematic.js";
+import { setPaneLabel, setParamsWide } from "./dock.js";
 
 const panel = document.getElementById("rightpanel");
-const app = document.getElementById("app");
-const drawerChecks = document.querySelector('[data-dpane="checks"]');
-const drawerBoards = document.querySelector('[data-dpane="boards"]');
+const paneChecks = document.querySelector('[data-dpane="checks"]');
+const paneBoards = document.querySelector('[data-dpane="boards"]');
 
 function el(tag, attrs = {}, children = []) {
   const e = document.createElement(tag);
@@ -66,6 +66,50 @@ function section(title, children) {
   return el("div", { class: "panel-section" }, [el("div", { class: "sec-title", text: title }), ...children]);
 }
 
+// --- numbers fold ---------------------------------------------------------------
+//
+// The 3D handles (W / D / H faces, orange divider bars) and the 2D view do the
+// editing, so raw values are not on screen by default: one fold holds every
+// number of the selected cabinet. Open / closed is remembered.
+
+const PARAMS_OPEN_KEY = "cablab.paramsOpen";
+let paramsOpen = false;
+try { paramsOpen = localStorage.getItem(PARAMS_OPEN_KEY) === "1"; } catch (_) { /* no storage: start closed */ }
+
+function numbersFold(summary, children) {
+  const kids = children.filter(Boolean);
+  if (!kids.length) return null;
+  const caret = el("span", { class: "pfold-caret", text: paramsOpen ? "▾" : "▸" });
+  const head = el("button", {
+    class: "pfold-head",
+    title: "Show / hide the numbers — sizes and boundaries can be dragged in the 3D view and in the 2D view above",
+  }, [
+    el("span", { class: "pfold-title", text: "Parameters" }),
+    el("span", { class: "pfold-sum", text: summary || "" }),
+    caret,
+  ]);
+  const wrap = el("div", { class: `pfold${paramsOpen ? " open" : ""}` }, [head, el("div", { class: "pfold-body" }, kids)]);
+  head.addEventListener("click", () => {
+    paramsOpen = !paramsOpen;
+    try { localStorage.setItem(PARAMS_OPEN_KEY, paramsOpen ? "1" : "0"); } catch (_) { /* not persisted */ }
+    wrap.classList.toggle("open", paramsOpen);
+    caret.textContent = paramsOpen ? "▾" : "▸";
+    log("panel.params.toggle", { open: paramsOpen });
+  });
+  return wrap;
+}
+
+/** "1200 × 600 × 2100 mm · 34 boards" for a fold header or a panel subtitle. */
+function sizeSummary(env, result, extra = "") {
+  const dims = `${Math.round(env.W)} × ${Math.round(env.D)} × ${Math.round(env.H)} mm`;
+  const boards = result?.boards?.length ? ` · ${result.boards.length} boards` : "";
+  return `${dims}${boards}${extra}`;
+}
+
+function zoneTypeField(mod, value, onCommit, label = "Type") {
+  return selectField(label, value, onCommit, mod.zoneTypes.map((t) => ({ id: t.id, label: t.label })));
+}
+
 // --- space ---------------------------------------------------------------------
 
 /** Cabinets that no longer fit the space (after a space edit, for instance). */
@@ -94,8 +138,7 @@ function renderSpace() {
         el("button", { class: "tb primary wide-solid", text: "Define the space", onclick: () => openSpaceDialog() }),
       ]),
     );
-    drawerChecks.replaceChildren(el("div", { class: "empty", text: "No space defined." }));
-    drawerBoards.replaceChildren(el("div", { class: "empty", text: "No space defined." }));
+    paneChecks.replaceChildren(el("div", { class: "empty", text: "No space defined." }));
     return;
   }
 
@@ -125,15 +168,14 @@ function renderSpace() {
       : null,
     el("div", { class: "panel-section muted" }, [
       el("div", { class: "sec-title", text: "Next" }),
-      el("div", { class: "empty small", text: "Pick a module on the left. Floor cabinets start on the floor (click a corner or a grid point). Overhead starts on a ceiling edge. After it is generated, the right panel shows a 2D view you can click and drag. Pull the blue faces to change W / D / H, drag the orange bars to move zone boundaries." }),
+      el("div", { class: "empty small", text: "Pick a module on the left. Floor cabinets start on the floor (click a corner or a grid point). Overhead starts on a ceiling edge. After it is generated, this pane shows a 2D view you can click and drag. Pull the blue faces to change W / D / H, drag the orange bars to move zone boundaries — the numbers are behind “Parameters”. Drag a pane's tab onto another edge to dock it left, right or bottom." }),
     ]),
   ].filter(Boolean));
-  drawerChecks.replaceChildren(
+  paneChecks.replaceChildren(
     issues.length
       ? el("div", {}, issues.map((m) => el("div", { class: "msg err", text: m })))
       : el("div", { class: "empty", text: count ? "All cabinets fit the space. Select one to see its checks." : "Select a cabinet to see its checks." }),
   );
-  drawerBoards.replaceChildren(el("div", { class: "empty", text: "Select a cabinet to list its boards." }));
 }
 
 // --- overhead editor ---------------------------------------------------------------
@@ -397,8 +439,8 @@ function renderOverhead(cab, mod, result, shared) {
     job.updateCabinet(cab.id, (c) => { c.params = mod.setEnvelope(c.params, { H }); c.pose = { ...c.pose, z: c.pose.z + (env.H - H) }; });
     job.commitSnapshot(before);
   };
-  const fold = el("details", { class: "panel-fold" }, [
-    el("summary", { text: `Cabinet · ${Math.round(env.W)} × ${Math.round(env.D + fpt)} × ${Math.round(env.H)} · ${result?.boards?.length || 0} boards` }),
+  const outer = { W: env.W, D: env.D + fpt, H: env.H };
+  const fold = numbersFold(sizeSummary(outer, result), [
     section("Outer size (= box, doors included)", [
       numField("Width (mm)", env.W, setEnv("W")),
       numField("Depth (mm)", env.D + fpt, (v) => setEnv("D")(v - fpt)),
@@ -415,8 +457,9 @@ function renderOverhead(cab, mod, result, shared) {
   panel.replaceChildren(...[
     el("div", { class: "panel-head" }, [
       el("div", { class: "panel-title", text: `${mod.label} cabinet` }),
-      el("div", { class: "panel-sub", text: `${cab.id} · doors ${sideLabel(sideOfRotZ(cab.pose.rotZ))} · ${Math.round(env.W)} × ${Math.round(env.D + fpt)} × ${Math.round(env.H)} mm · top on the ceiling` }),
+      el("div", { class: "panel-sub", text: `${cab.id} · doors ${sideLabel(sideOfRotZ(cab.pose.rotZ))} · ${sizeSummary(outer, result)} · top on the ceiling` }),
     ]),
+    geo,
     section(`Zones · left → right · ${zones.length} · ${Math.round(total)} mm`, [
       el("div", { class: "zs-tools" }, [addZone, delZone, avgZone, el("span", { class: "zs-hint", text: "Drag a boundary · click a zone · Ctrl+click adds to the selection" })]),
       strip,
@@ -424,7 +467,6 @@ function renderOverhead(cab, mod, result, shared) {
       cumRow,
     ]),
     zoneCard,
-    geo,
     fold,
     shared.checks,
     el("div", { class: "panel-foot" }, [shared.remove]),
@@ -480,25 +522,42 @@ function renderUOverhead(cab, mod, result, { checks, remove }) {
   const setEnv = (k) => (v) => job.setParams(cab.id, mod.setEnvelope(p, { [k]: Math.max(mod.minSize[k], v) }));
   const setPose = (k) => (v) => job.setPose(cab.id, { [k]: v });
   const setRun = (v) => job.setParams(cab.id, mod.setEnvelope({ ...p, cabinetDepth: Math.max(150, v) }, {}));
+
+  // Only the type of the zone picked in the plan; widths are dragged there.
+  const RUN_LABEL = { leftZones: "Left run", backZones: "Back run", rightZones: "Right run" };
+  const sel = geoSelected(cab.id);
+  const picked = sel && typeof sel === "object" && Array.isArray(p[sel.run]) ? p[sel.run][sel.zone] : null;
+  const zoneCard = picked
+    ? section(`${RUN_LABEL[sel.run]} · zone ${sel.zone + 1} · ${Math.round(picked.width)} mm`, [
+        zoneTypeField(mod, picked.type, (v) => {
+          const next = p[sel.run].map((z, j) => (j === sel.zone ? { ...z, type: v } : { ...z }));
+          job.setParams(cab.id, { ...p, [sel.run]: next });
+        }),
+      ])
+    : section("Zones", [el("div", { class: "empty small", text: "Click a zone in the plan above to change its type · drag a boundary to re-size it." })]);
+
   panel.replaceChildren(
     el("div", { class: "panel-head" }, [
       el("div", { class: "panel-title", text: `${mod.label}` }),
-      el("div", { class: "panel-sub", text: `${cab.id} · ${result?.boards?.length || 0} boards · three OHC runs` }),
+      el("div", { class: "panel-sub", text: `${cab.id} · ${sizeSummary(env, result)} · three OHC runs` }),
     ]),
     mountSchematic(cab, mod, result),
-    section("Bounding box", [
-      numField("Width (mm)", env.W, setEnv("W")),
-      numField("Depth (mm)", env.D, setEnv("D")),
-      numField("Height (mm)", env.H, setEnv("H")),
-      numField("Run depth (mm)", layout.run, setRun),
-    ]),
-    uohcRunBlock(cab, mod, p, "leftZones", "Left run", layout.leftLen),
-    uohcRunBlock(cab, mod, p, "backZones", "Back run", layout.backLen),
-    uohcRunBlock(cab, mod, p, "rightZones", "Right run", layout.rightLen),
-    section("Position", [
-      numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
-      numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),
-      numField("Rotation (°)", cab.pose.rotZ || 0, (v) => job.setPose(cab.id, { rotZ: ((Math.round(v / 90) * 90) % 360 + 360) % 360 }), { step: 90, min: -1e6 }),
+    zoneCard,
+    numbersFold(sizeSummary(env, result), [
+      section("Bounding box", [
+        numField("Width (mm)", env.W, setEnv("W")),
+        numField("Depth (mm)", env.D, setEnv("D")),
+        numField("Height (mm)", env.H, setEnv("H")),
+        numField("Run depth (mm)", layout.run, setRun),
+      ]),
+      uohcRunBlock(cab, mod, p, "leftZones", "Left run", layout.leftLen),
+      uohcRunBlock(cab, mod, p, "backZones", "Back run", layout.backLen),
+      uohcRunBlock(cab, mod, p, "rightZones", "Right run", layout.rightLen),
+      section("Position", [
+        numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
+        numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),
+        numField("Rotation (°)", cab.pose.rotZ || 0, (v) => job.setPose(cab.id, { rotZ: ((Math.round(v / 90) * 90) % 360 + 360) % 360 }), { step: 90, min: -1e6 }),
+      ]),
     ]),
     checks,
     el("div", { class: "panel-foot" }, [remove]),
@@ -612,30 +671,46 @@ function renderKitchen(cab, mod, result, { checks, remove }) {
     job.setParams(cab.id, withKitchenVPanelPrefs({ ...p, columns: next }));
   } });
 
+  // The cell picked in the front view: its type, and nothing else.
+  const sel = geoSelected(cab.id);
+  const pickedCol = sel && typeof sel === "object" ? columns[sel.col] : null;
+  const pickedZone = pickedCol ? (pickedCol.zones || [])[sel.zone] : null;
+  const cellCard = pickedZone
+    ? section(`Column ${sel.col + 1} · zone ${sel.zone + 1} · ${Math.round(pickedZone.height)} mm`, [
+        zoneTypeField(mod, pickedZone.zoneType || pickedCol.columnType, (v) => {
+          const next = columns.map((c, k) => (k !== sel.col ? c : { ...c, zones: (c.zones || []).map((zz, j) => (j === sel.zone ? { ...zz, zoneType: v } : { ...zz })) }));
+          job.setParams(cab.id, { ...p, columns: next });
+        }),
+      ])
+    : section("Cells", [el("div", { class: "empty small", text: "Click a cell in the front view to change its type · drag a column or zone boundary there to re-size it." })]);
+
   panel.replaceChildren(
     el("div", { class: "panel-head" }, [
       el("div", { class: "panel-title", text: `${mod.label} cabinet` }),
-      el("div", { class: "panel-sub", text: `${cab.id} · ${result?.boards?.length || 0} boards` }),
+      el("div", { class: "panel-sub", text: `${cab.id} · ${sizeSummary(env, result)}` }),
     ]),
     mountSchematic(cab, mod, result),
-    section("Outer size (= box)", [
-      numField("Width (mm)", env.W, setEnv("W")),
-      numField("Depth (mm)", env.D, setEnv("D")),
-      numField("Height (mm)", env.H, setEnv("H")),
-    ]),
-    section("Toe kick", [
-      numField("Clearance (mm)", g.bottomClearanceHeight ?? 100, setG("bottomClearanceHeight", 0)),
-      selectField("Style", g.bottomClearanceStyle || "style_1", (v) => job.setParams(cab.id, { ...p, globalSettings: { ...g, bottomClearanceStyle: v } }), [
-        { id: "style_1", label: "Style 1" },
-        { id: "style_2", label: "Style 2" },
+    cellCard,
+    numbersFold(sizeSummary(env, result), [
+      section("Outer size (= box)", [
+        numField("Width (mm)", env.W, setEnv("W")),
+        numField("Depth (mm)", env.D, setEnv("D")),
+        numField("Height (mm)", env.H, setEnv("H")),
       ]),
-    ]),
-    ...columnBlocks,
-    addCol,
-    section("Position", [
-      numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
-      numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),
-      numField("Rotation (°)", cab.pose.rotZ || 0, (v) => job.setPose(cab.id, { rotZ: ((Math.round(v / 90) * 90) % 360 + 360) % 360 }), { step: 90, min: -1e6 }),
+      section("Toe kick", [
+        numField("Clearance (mm)", g.bottomClearanceHeight ?? 100, setG("bottomClearanceHeight", 0)),
+        selectField("Style", g.bottomClearanceStyle || "style_1", (v) => job.setParams(cab.id, { ...p, globalSettings: { ...g, bottomClearanceStyle: v } }), [
+          { id: "style_1", label: "Style 1" },
+          { id: "style_2", label: "Style 2" },
+        ]),
+      ]),
+      ...columnBlocks,
+      addCol,
+      section("Position", [
+        numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
+        numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),
+        numField("Rotation (°)", cab.pose.rotZ || 0, (v) => job.setPose(cab.id, { rotZ: ((Math.round(v / 90) * 90) % 360 + 360) % 360 }), { step: 90, min: -1e6 }),
+      ]),
     ]),
     checks,
     el("div", { class: "panel-foot" }, [remove]),
@@ -682,24 +757,29 @@ function renderLounge(cab, mod, result, { checks, remove }) {
   panel.replaceChildren(
     el("div", { class: "panel-head" }, [
       el("div", { class: "panel-title", text: `${mod.label}` }),
-      el("div", { class: "panel-sub", text: `${cab.id} · ${result?.boards?.length || 0} boards` }),
+      el("div", { class: "panel-sub", text: `${cab.id} · ${sizeSummary(env, result)}` }),
     ]),
     mountSchematic(cab, mod, result),
-    section("Layout", [
+    section("Shape", [
       selectField("Style", p.style || "I_SHAPE", (v) => job.setParams(cab.id, loungeWithStyle(p, v)), styles),
-      numField("Height (mm)", p.height, setEnv("H")),
-      checkField("Top lids", p.topLidEnabled !== false, (on) => job.setParams(cab.id, { ...p, topLidEnabled: on })),
-      checkField("Wheel avoidance", !!p.wheelAvoidanceEnabled, (on) => job.setParams(cab.id, { ...p, wheelAvoidanceEnabled: on })),
-      ...(p.wheelAvoidanceEnabled ? [
-        numField("Avoidance depth (mm)", p.avoidanceDepth ?? 300, setP("avoidanceDepth", 0)),
-        numField("Avoidance height (mm)", p.avoidanceHeight ?? 250, setP("avoidanceHeight", 0)),
-      ] : []),
+      el("div", { class: "empty small", text: "Drag the boundary in the plan above for the run split · pull the blue faces in 3D for the footprint." }),
     ]),
-    section("Footprint", dimFields),
-    section("Position", [
-      numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
-      numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),
-      numField("Rotation (°)", cab.pose.rotZ || 0, (v) => job.setPose(cab.id, { rotZ: ((Math.round(v / 90) * 90) % 360 + 360) % 360 }), { step: 90, min: -1e6 }),
+    numbersFold(sizeSummary(env, result), [
+      section("Layout", [
+        numField("Height (mm)", p.height, setEnv("H")),
+        checkField("Top lids", p.topLidEnabled !== false, (on) => job.setParams(cab.id, { ...p, topLidEnabled: on })),
+        checkField("Wheel avoidance", !!p.wheelAvoidanceEnabled, (on) => job.setParams(cab.id, { ...p, wheelAvoidanceEnabled: on })),
+        ...(p.wheelAvoidanceEnabled ? [
+          numField("Avoidance depth (mm)", p.avoidanceDepth ?? 300, setP("avoidanceDepth", 0)),
+          numField("Avoidance height (mm)", p.avoidanceHeight ?? 250, setP("avoidanceHeight", 0)),
+        ] : []),
+      ]),
+      section("Footprint", dimFields),
+      section("Position", [
+        numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
+        numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),
+        numField("Rotation (°)", cab.pose.rotZ || 0, (v) => job.setPose(cab.id, { rotZ: ((Math.round(v / 90) * 90) % 360 + 360) % 360 }), { step: 90, min: -1e6 }),
+      ]),
     ]),
     checks,
     el("div", { class: "panel-foot" }, [remove]),
@@ -725,16 +805,32 @@ function renderCabinet(cab) {
   const setPose = (k) => (v) => job.setPose(cab.id, { [k]: v });
 
   const zones = p.zones || [];
+  const setZoneType = (i) => (v) => {
+    const next = zones.map((zz) => ({ ...zz }));
+    next[i].type = v;
+    if (mod.panel === "tall" && v === "double_door") next[i].verticalDivider = true;
+    job.setParams(cab.id, mod.panel === "tall" ? withTallFridgeDefaults({ ...p, zones: next }) : { ...p, zones: next });
+  };
+  const removeZone = (i) => () => job.setParams(cab.id, { ...p, zones: fitZones(zones.filter((_, k) => k !== i), interior) });
+  const addZone = (cls) => el("button", { class: cls, text: "+ Zone", onclick: () => {
+    // New zone takes up to 150 mm from the tallest existing zone.
+    const next = zones.map((zz) => ({ ...zz }));
+    const tallest = next.reduce((a, b) => (b.height > a.height ? b : a), next[0]);
+    const take = Math.min(150, tallest.height - MIN_ZONE_HEIGHT);
+    const zone = { id: `zone-${Date.now().toString(36)}`, type: "drawer", height: take };
+    if (take >= MIN_ZONE_HEIGHT) {
+      tallest.height = Math.round((tallest.height - take) * 10) / 10;
+      next.push(zone);
+      job.setParams(cab.id, { ...p, zones: next });
+    } else {
+      next.push({ ...zone, height: MIN_ZONE_HEIGHT });
+      job.setParams(cab.id, { ...p, zones: fitZones(next, interior) });
+    }
+  } });
+
   const zoneRows = zones.map((z, i) => {
     const type = el("select", {
-      onchange: (e) => {
-        const next = zones.map((zz) => ({ ...zz }));
-        next[i].type = e.target.value;
-        if (mod.panel === "tall" && e.target.value === "double_door") next[i].verticalDivider = true;
-        e.target.blur();
-        const params = mod.panel === "tall" ? withTallFridgeDefaults({ ...p, zones: next }) : { ...p, zones: next };
-        job.setParams(cab.id, params);
-      },
+      onchange: (e) => { e.target.blur(); setZoneType(i)(e.target.value); },
     }, mod.zoneTypes.map((t) => el("option", { value: t.id, text: t.label, selected: t.id === z.type })));
     const height = el("input", { type: "number", value: z.height, step: 1, min: 0 });
     height.addEventListener("change", () => {
@@ -753,28 +849,27 @@ function renderCabinet(cab) {
       }
     });
     const remove = el("button", { class: "icon", title: "Remove zone", text: "×", disabled: zones.length <= 1,
-      onclick: () => {
-        const next = zones.filter((_, k) => k !== i);
-        job.setParams(cab.id, { ...p, zones: fitZones(next, interior) });
-      } });
+      onclick: removeZone(i) });
     return el("div", { class: "zone-row" }, [el("span", { class: "zone-idx", text: String(i + 1) }), type, height, remove]);
   });
 
-  const addZone = el("button", { class: "tb wide", text: "+ Add zone", onclick: () => {
-    // New zone takes up to 150 mm from the tallest existing zone.
-    const next = zones.map((zz) => ({ ...zz }));
-    const tallest = next.reduce((a, b) => (b.height > a.height ? b : a), next[0]);
-    const take = Math.min(150, tallest.height - MIN_ZONE_HEIGHT);
-    const zone = { id: `zone-${Date.now().toString(36)}`, type: "drawer", height: take };
-    if (take >= MIN_ZONE_HEIGHT) {
-      tallest.height = Math.round((tallest.height - take) * 10) / 10;
-      next.push(zone);
-      job.setParams(cab.id, { ...p, zones: next });
-    } else {
-      next.push({ ...zone, height: MIN_ZONE_HEIGHT });
-      job.setParams(cab.id, { ...p, zones: fitZones(next, interior) });
-    }
-  } });
+  // What the geometry cannot say by itself: the type of the zone picked in the
+  // 2D view. Heights stay out of the way — drag a boundary instead.
+  const pickedZone = typeof geoSelected(cab.id) === "number" ? geoSelected(cab.id) : null;
+  const zoneCard = zones.length
+    ? (pickedZone != null && zones[pickedZone]
+      ? section(`Zone ${pickedZone + 1} of ${zones.length} · ${Math.round(zones[pickedZone].height)} mm`, [
+          zoneTypeField(mod, zones[pickedZone].type, setZoneType(pickedZone)),
+          el("div", { class: "btn-row" }, [
+            addZone("tb"),
+            el("button", { class: "tb danger", text: "Remove zone", disabled: zones.length <= 1, onclick: removeZone(pickedZone) }),
+          ]),
+        ])
+      : section(`Zones · ${zones.length}`, [
+          el("div", { class: "empty small", text: "Click a zone in the view above to change its type · drag a boundary there or the orange bar in 3D to re-size it." }),
+          el("div", { class: "btn-row" }, [addZone("tb")]),
+        ]))
+    : null;
 
   const errors = result?.validation?.errors || [];
   const warnings = result?.validation?.warnings || [];
@@ -807,13 +902,15 @@ function renderCabinet(cab) {
       el("div", { class: "panel-title", text: mod.label }),
       el("div", { class: "panel-sub", text: `${cab.id} · nose slab · solid volume` }),
     ]),
-    section("Outer size (= nose slab)", [
-      numField("Width (mm)", env.W, () => {}, { readOnly: fromSpace }),
-      numField("From front (mm)", env.D, setNoseDepth),
-      numField("Height at room face (mm)", env.H, () => {}, { readOnly: fromSpace }),
-    ]),
     el("div", { class: "panel-section" }, [
-      el("div", { class: "empty small", text: "One solid volume for now — tunnel boot, robes and overhead are partitioned inside it in a later version." }),
+      el("div", { class: "empty small", text: "Drag the room-side face in 3D to change how far the slab reaches into the van. Width and height come from the vehicle. One solid volume for now — tunnel boot, robes and overhead are partitioned inside it in a later version." }),
+    ]),
+    numbersFold(sizeSummary(env, result), [
+      section("Outer size (= nose slab)", [
+        numField("Width (mm)", env.W, () => {}, { readOnly: fromSpace }),
+        numField("From front (mm)", env.D, setNoseDepth),
+        numField("Height at room face (mm)", env.H, () => {}, { readOnly: fromSpace }),
+      ]),
     ]),
     checks,
     el("div", { class: "panel-foot" }, [remove]),
@@ -825,13 +922,15 @@ function renderCabinet(cab) {
       el("div", { class: "panel-title", text: mod.label }),
       el("div", { class: "panel-sub", text: `${cab.id} · on the body's room face · centred · solid volume` }),
     ]),
-    section("Size", [
-      numField("Width (mm)", env.W, setEnv("W")),
-      numField("Length from body (mm)", env.D, setEnv("D")),
-      numField("Height (mm)", env.H, () => {}, { readOnly: "Tunnel boot height — set together with the body's boot later" }),
-    ]),
     el("div", { class: "panel-section" }, [
-      el("div", { class: "empty small", text: "Follows the Bedroom body: always centred on the van and against the body's room-side face. One solid volume for now." }),
+      el("div", { class: "empty small", text: "Pull the blue faces in 3D for width and length. Follows the Bedroom body: always centred on the van and against the body's room-side face. One solid volume for now." }),
+    ]),
+    numbersFold(sizeSummary(env, result), [
+      section("Size", [
+        numField("Width (mm)", env.W, setEnv("W")),
+        numField("Length from body (mm)", env.D, setEnv("D")),
+        numField("Height (mm)", env.H, () => {}, { readOnly: "Tunnel boot height — set together with the body's boot later" }),
+      ]),
     ]),
     checks,
     el("div", { class: "panel-foot" }, [remove]),
@@ -842,16 +941,18 @@ function renderCabinet(cab) {
       el("div", { class: "panel-title", text: mod.label }),
       el("div", { class: "panel-sub", text: `${cab.id} · against the body · ${p.side === "right" ? "right" : "left"} wall · solid volume` }),
     ]),
-    section("Size", [
-      selectField("Side", p.side === "right" ? "right" : "left", (v) => job.setParams(cab.id, { ...p, side: v }), [
+    section("Side", [
+      selectField("Against", p.side === "right" ? "right" : "left", (v) => job.setParams(cab.id, { ...p, side: v }), [
         { id: "left", label: "Left wall" }, { id: "right", label: "Right wall" },
       ]),
-      numField("Width (mm)", env.W, setEnv("W")),
-      numField("Length from body (mm)", env.D, setEnv("D")),
-      numField("Height (mm)", env.H, setEnv("H")),
+      el("div", { class: "empty small", text: "Pull the blue faces in 3D for width, length and height. One table per side." }),
     ]),
-    el("div", { class: "panel-section" }, [
-      el("div", { class: "empty small", text: "Follows the Bedroom body and the chosen side wall. One solid volume for now. One table per side." }),
+    numbersFold(sizeSummary(env, result), [
+      section("Size", [
+        numField("Width (mm)", env.W, setEnv("W")),
+        numField("Length from body (mm)", env.D, setEnv("D")),
+        numField("Height (mm)", env.H, setEnv("H")),
+      ]),
     ]),
     checks,
     el("div", { class: "panel-foot" }, [remove]),
@@ -859,22 +960,22 @@ function renderCabinet(cab) {
 
   if (mod.panel === "ohc") {
     renderOverhead(cab, mod, result, { checks, remove });
-    fillDrawer(result, errors, warnings);
+    fillPanes(cab, result, errors, warnings);
     return;
   }
   if (mod.panel === "kitchen") {
     renderKitchen(cab, mod, result, { checks, remove });
-    fillDrawer(result, errors, warnings);
+    fillPanes(cab, result, errors, warnings);
     return;
   }
   if (mod.panel === "lounge") {
     renderLounge(cab, mod, result, { checks, remove });
-    fillDrawer(result, errors, warnings);
+    fillPanes(cab, result, errors, warnings);
     return;
   }
   if (mod.panel === "uohc") {
     renderUOverhead(cab, mod, result, { checks, remove });
-    fillDrawer(result, errors, warnings);
+    fillPanes(cab, result, errors, warnings);
     return;
   }
 
@@ -909,53 +1010,56 @@ function renderCabinet(cab) {
   const boxChildren = [
     el("div", { class: "panel-head" }, [
       el("div", { class: "panel-title", text: `${mod.label} cabinet` }),
-      el("div", { class: "panel-sub", text: `${cab.id} · ${result?.boards?.length || 0} boards` }),
+      el("div", { class: "panel-sub", text: `${cab.id} · ${sizeSummary(env, result)}` }),
     ]),
     mountSchematic(cab, mod, result),
-    section("Outer size (= box)", [
-      numField("Width (mm)", env.W, setEnv("W")),
-      numField("Depth (mm)", env.D, setEnv("D")),
-      numField("Height (mm)", env.H, setEnv("H")),
-    ]),
-    section(mod.panel === "tall" ? `Zones · bottom → top · ${interior} mm` : `Zones · top → bottom · interior ${interior} mm`, [
-      el("div", { class: "zone-list" }, zoneRows),
-      addZone,
-    ]),
-    ...zones.flatMap((z, i) => {
-      if (mod.panel !== "tall" || z.type !== "fridge") return [];
-      const setFridge = (k) => (v) => {
-        const next = zones.map((zz, j) => (j === i ? { ...zz, [k]: v } : { ...zz }));
-        job.setParams(cab.id, withTallFridgeDefaults({ ...p, zones: next }));
-      };
-      return [section(`Fridge · zone ${i + 1}`, [
-        numField("Appliance width (mm)", z.applianceWidthMm || 550, setFridge("applianceWidthMm")),
-        numField("Appliance depth (mm)", z.applianceDepthMm || 580, setFridge("applianceDepthMm")),
-        numField("Appliance height (mm)", z.applianceHeightMm || z.height, setFridge("applianceHeightMm")),
-      ])];
-    }),
-    ...tallExtras,
-    section("Position", [
-      numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
-      numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),
-      numField("Rotation (°)", cab.pose.rotZ || 0, (v) => job.setPose(cab.id, { rotZ: ((Math.round(v / 90) * 90) % 360 + 360) % 360 }), { step: 90, min: -1e6 }),
-    ]),
-    section("Material", [
-      el("div", { class: "kv" }, [el("span", { text: "Carcass" }), el("b", { text: p.carcassColorName || p.carcassColor || "White Stipple" })]),
-      el("div", { class: "kv" }, [el("span", { text: "Door" }), el("b", { text: p.doorColorName || p.doorColor || "—" })]),
-      numField("Carcass thickness", cpt, setParam("panelThickness", 1), { step: 0.5 }),
-      numField("Front thickness", p.frontPanelThickness ?? thickness(job.getStock(), "door"), setParam("frontPanelThickness", 1), { step: 0.5 }),
-      numField("Front clearance", p.frontClearance ?? 2.5, setParam("frontClearance", 0), { step: 0.5 }),
+    zoneCard,
+    numbersFold(sizeSummary(env, result), [
+      section("Outer size (= box)", [
+        numField("Width (mm)", env.W, setEnv("W")),
+        numField("Depth (mm)", env.D, setEnv("D")),
+        numField("Height (mm)", env.H, setEnv("H")),
+      ]),
+      section(mod.panel === "tall" ? `Zones · bottom → top · ${interior} mm` : `Zones · top → bottom · interior ${interior} mm`, [
+        el("div", { class: "zone-list" }, zoneRows),
+        addZone("tb wide"),
+      ]),
+      ...zones.flatMap((z, i) => {
+        if (mod.panel !== "tall" || z.type !== "fridge") return [];
+        const setFridge = (k) => (v) => {
+          const next = zones.map((zz, j) => (j === i ? { ...zz, [k]: v } : { ...zz }));
+          job.setParams(cab.id, withTallFridgeDefaults({ ...p, zones: next }));
+        };
+        return [section(`Fridge · zone ${i + 1}`, [
+          numField("Appliance width (mm)", z.applianceWidthMm || 550, setFridge("applianceWidthMm")),
+          numField("Appliance depth (mm)", z.applianceDepthMm || 580, setFridge("applianceDepthMm")),
+          numField("Appliance height (mm)", z.applianceHeightMm || z.height, setFridge("applianceHeightMm")),
+        ])];
+      }),
+      ...tallExtras,
+      section("Position", [
+        numField("X (mm)", cab.pose.x, setPose("x"), { min: -1e6 }),
+        numField("Y (mm)", cab.pose.y, setPose("y"), { min: -1e6 }),
+        numField("Rotation (°)", cab.pose.rotZ || 0, (v) => job.setPose(cab.id, { rotZ: ((Math.round(v / 90) * 90) % 360 + 360) % 360 }), { step: 90, min: -1e6 }),
+      ]),
+      section("Material", [
+        el("div", { class: "kv" }, [el("span", { text: "Carcass" }), el("b", { text: p.carcassColorName || p.carcassColor || "White Stipple" })]),
+        el("div", { class: "kv" }, [el("span", { text: "Door" }), el("b", { text: p.doorColorName || p.doorColor || "—" })]),
+        numField("Carcass thickness", cpt, setParam("panelThickness", 1), { step: 0.5 }),
+        numField("Front thickness", p.frontPanelThickness ?? thickness(job.getStock(), "door"), setParam("frontPanelThickness", 1), { step: 0.5 }),
+        numField("Front clearance", p.frontClearance ?? 2.5, setParam("frontClearance", 0), { step: 0.5 }),
+      ]),
     ]),
     checks,
     el("div", { class: "panel-foot" }, [remove]),
   ];
   panel.replaceChildren(...(mod.placement === "nose" ? noseChildren : mod.placement === "bedBox" ? bedChildren : mod.placement === "bedSide" ? bedSideChildren : boxChildren).filter(Boolean));
-  fillDrawer(result, errors, warnings);
+  fillPanes(cab, result, errors, warnings);
 }
 
-/** Checks + Boards tabs of the bottom drawer for a generated cabinet. */
-function fillDrawer(result, errors, warnings) {
-  drawerChecks.replaceChildren(
+/** Checks pane (wherever it is docked) for a generated cabinet. */
+function fillPanes(cab, result, errors, warnings) {
+  paneChecks.replaceChildren(
     errors.length || warnings.length
       ? el("div", {}, [
           ...errors.map((m) => el("div", { class: "msg err", text: m })),
@@ -963,24 +1067,119 @@ function fillDrawer(result, errors, warnings) {
         ])
       : el("div", { class: "empty ok", text: "All checks passed." }),
   );
-
-  const boards = result?.boards || [];
-  drawerBoards.replaceChildren(
-    boards.length
-      ? el("table", { class: "grid" }, [
-          el("thead", {}, [el("tr", {}, ["ID", "Name", "Type", "L (mm)", "W (mm)", "T (mm)"].map((h) => el("th", { text: h })))]),
-          el("tbody", {}, boards.map((b) => {
-            const dx = b.x1 - b.x0, dy = b.y1 - b.y0, dz = b.z1 - b.z0;
-            const dims = [dx, dy, dz].filter((_, k) => ["X", "Y", "Z"][k] !== b.thicknessAxis).sort((a, c) => c - a);
-            return el("tr", {}, [
-              el("td", { text: b.id }), el("td", { text: b.name }), el("td", { text: b.boardType }),
-              el("td", { text: dims[0].toFixed(1) }), el("td", { text: dims[1].toFixed(1) }), el("td", { text: String(b.materialThickness) }),
-            ]);
-          })),
-        ])
-      : el("div", { class: "empty", text: "No boards — fix the checks first." }),
-  );
 }
+
+// --- boards tree ----------------------------------------------------------------
+//
+// The Boards pane lists every cabinet in the job, not just the selected one:
+// one collapsed row per cabinet, its boards when expanded. Clicking a board
+// row still highlights that board in 3D, for any cabinet.
+
+const boardsOpen = new Set(); // cabinet ids expanded in the Boards pane
+
+function mmShort(v) {
+  const n = Math.round(Number(v) * 10) / 10;
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+/** One label: the human name, or the id when the generator did not give one. */
+function boardLabel(b) {
+  return String(b.name || b.id || "").trim();
+}
+
+/** Cut size L × W × T. L/W are the two non-thickness axes, longest first. */
+function boardSize(b) {
+  const dx = b.x1 - b.x0, dy = b.y1 - b.y0, dz = b.z1 - b.z0;
+  const dims = [dx, dy, dz].filter((_, k) => ["X", "Y", "Z"][k] !== b.thicknessAxis).sort((a, c) => c - a);
+  const t = b.materialThickness;
+  const face = `${mmShort(dims[0])} × ${mmShort(dims[1])}`;
+  return t == null || t === "" ? face : `${face} × ${mmShort(t)}`;
+}
+
+function boardsList(cab, boards) {
+  const h = getHighlightedBoard();
+  return el("div", { class: "tboards" }, boards.map((b) => {
+    const sel = !!(h && h.cabId === cab.id && h.boardId === b.id);
+    const type = b.boardType && b.boardType !== b.id && b.boardType !== b.name ? ` · ${b.boardType}` : "";
+    return el("button", {
+      class: `tboard${sel ? " sel" : ""}`,
+      "data-board": b.id,
+      "data-cab": cab.id,
+      title: `${b.id}${type} — click to highlight in 3D`,
+      onclick: b.id ? () => highlightBoard(cab.id, b.id, { toggle: true }) : undefined,
+    }, [
+      el("span", { class: "tboard-name", text: boardLabel(b) }),
+      el("span", { class: "tboard-size", text: boardSize(b) }),
+    ]);
+  }));
+}
+
+function toggleBoardsNode(id, open) {
+  const next = open ?? !boardsOpen.has(id);
+  if (next) boardsOpen.add(id);
+  else boardsOpen.delete(id);
+  log("boards.expand", { id, open: next });
+  renderBoardsPane();
+}
+
+function renderBoardsPane() {
+  const cabs = job.getJob().cabinets || [];
+  const selId = job.getSelectedId();
+  if (!cabs.length) {
+    setPaneLabel("boards", "Boards");
+    paneBoards.replaceChildren(el("div", {
+      class: "empty",
+      text: job.hasSpace() ? "No cabinets yet — place a module and its boards appear here." : "No space defined.",
+    }));
+    return;
+  }
+  let total = 0;
+  const nodes = cabs.map((cab) => {
+    const result = job.resultFor(cab.id);
+    const boards = result?.boards || [];
+    const errors = result?.validation?.errors || [];
+    total += boards.length;
+    const open = boardsOpen.has(cab.id);
+    const mod = getModule(cab.moduleId);
+    // A volume-only module (Bedroom body, Bed Box) is one solid, not boards.
+    const solid = !boards.length && !!mod.volumeOnly;
+    const head = el("button", {
+      class: `tnode-head${open ? " open" : ""}${cab.id === selId ? " cur" : ""}`,
+      title: open ? "Collapse this cabinet" : "Expand — list this cabinet's boards",
+      onclick: () => toggleBoardsNode(cab.id),
+    }, [
+      el("span", { class: "tcaret", text: open ? "▾" : "▸" }),
+      el("span", { class: "tname", text: `${cab.id} · ${mod.label}` }),
+      el("span", { class: "tmeta", text: errors.length ? `${errors.length} error(s)` : solid ? "solid" : String(boards.length) }),
+    ]);
+    return el("div", { class: "tnode" }, [
+      head,
+      open
+        ? el("div", { class: "tnode-body" }, [
+            boards.length
+              ? boardsList(cab, boards)
+              : el("div", { class: "empty small", text: solid ? "One solid volume — no boards yet." : "No boards — fix the checks first." }),
+          ])
+        : null,
+    ]);
+  });
+  setPaneLabel("boards", total ? `Boards (${total})` : "Boards");
+  paneBoards.replaceChildren(el("div", { class: "tree" }, nodes));
+}
+
+function paintBoardRows(h, { scroll } = {}) {
+  // A board picked in 3D can belong to a collapsed cabinet: open it first.
+  if (h && !boardsOpen.has(h.cabId)) {
+    boardsOpen.add(h.cabId);
+    renderBoardsPane();
+  }
+  paneBoards.querySelectorAll("[data-board]").forEach((tr) => {
+    const on = !!(h && tr.dataset.board === h.boardId && tr.dataset.cab === h.cabId);
+    tr.classList.toggle("sel", on);
+    if (on && scroll) tr.scrollIntoView({ block: "nearest" });
+  });
+}
+onBoardHighlight(paintBoardRows);
 
 function renderPlane(pl) {
   const AXIS = { x: "X (width)", y: "Y (depth)", z: "Z (height)" };
@@ -1001,20 +1200,20 @@ function renderPlane(pl) {
       el("button", { class: "tb danger", text: "Remove plane", onclick: () => job.removePlane(pl.id) }),
     ]),
   );
-  drawerChecks.replaceChildren(el("div", { class: "empty", text: "A construction plane has no checks." }));
-  drawerBoards.replaceChildren(el("div", { class: "empty", text: "A construction plane has no boards." }));
+  paneChecks.replaceChildren(el("div", { class: "empty", text: "A construction plane has no checks." }));
 }
 
 export function renderPanel() {
   const sel = job.getSelected();
-  // The wide editor page only while an OHC is selected; everything else uses the narrow panel.
-  const wide = !!sel && usesGeometryPanel(getModule(sel.moduleId));
-  panel.classList.toggle("wide", wide);
-  app.classList.toggle("wide-right", wide);
+  // A geometry module gets the wide editor page; everything else the narrow panel.
+  setParamsWide(!!sel && usesGeometryPanel(getModule(sel.moduleId)));
   if (sel) renderCabinet(sel);
   else {
     const pl = job.getSelectedPlane();
     if (pl) renderPlane(pl);
     else renderSpace();
   }
+  // The Boards tree is job-wide, not selection-wide. Skipped mid-drag: a
+  // boundary drag re-renders on every pointer move and only touches the 2D view.
+  if (!geoDrag) renderBoardsPane();
 }

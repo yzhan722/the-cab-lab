@@ -1,5 +1,6 @@
-// Shell wiring: top bar, module rail, drawer, status bar, file actions.
+// Shell wiring: top bar, module rail, docks, status bar, file actions.
 import { setView, drawSpace, floorPointAt, canvas, captureViewportViews, setQaCamera } from "./space.js";
+import "./dock.js";
 import * as job from "./job.js";
 import { MODULES, MODULE_GROUPS, PLANNED_MODULES, isRailModule } from "./modules.js";
 import { syncCabinets, syncPlanes } from "./cabinets3d.js";
@@ -159,17 +160,6 @@ $$("#viewGroup [data-view]").forEach((btn) => {
     setView(btn.dataset.view);
     log("view", { view: btn.dataset.view });
     $("#viewLabel").textContent = btn.textContent;
-  });
-});
-
-// --- drawer ---------------------------------------------------------------------
-const drawer = $("#drawer");
-$("#drawerToggle").addEventListener("click", () => drawer.classList.toggle("collapsed"));
-$$("#drawer .dtab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    $$("#drawer .dtab").forEach((t) => t.classList.toggle("active", t === tab));
-    $$("#drawer .dpane").forEach((p) => p.classList.toggle("active", p.dataset.dpane === tab.dataset.dtab));
-    drawer.classList.remove("collapsed");
   });
 });
 

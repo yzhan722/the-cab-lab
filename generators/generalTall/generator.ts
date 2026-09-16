@@ -377,11 +377,14 @@ function addVerticalBoards(
   const pt = debug.panelThickness;
   const cabinetWidth = Number(params.cabinetWidth);
   const rspT = debug.rightSidePanelThickness;
-  const fpt = debug.frontFaceAllowance;
   const midDepth = debug.midDepth;
-  const carcassY0 = fpt;
-  const carcassY1 = fpt + midDepth;
-  const rearY0 = carcassY0 + Math.max(0, midDepth - 150);
+  // Structural Y coordinates use the carcass run: front at 0, rear at
+  // midDepth. This is also the coordinate system used by Zi, H13/H24,
+  // H34 and T4/T5. Adding the front-panel thickness here disconnects the
+  // rear stiles from those boards.
+  const carcassY0 = 0;
+  const carcassY1 = midDepth;
+  const rearY0 = Math.max(0, midDepth - 150);
   // V stiles share the side-panel X slab in absolute cabinet coordinates.
   // Left pair sits on 0..pt; right pair mirrors SidePanel_R at cw-rspT..cw-rspT+pt.
   const rightV0 = rspT > 0 ? cabinetWidth - rspT : cabinetWidth - pt;
@@ -666,7 +669,6 @@ function updateSidePanelOverlapAudit(
 ): void {
   const sidePanels = boards.filter((item) => item.category === "side_panel" && (item.id === "SidePanel_L" || item.id === "SidePanel_R"));
   const verticalBoards = boards.filter((item) => ["V1", "V2", "V3", "V4"].includes(item.id));
-  const fpt = debug.frontFaceAllowance;
   const bboxOf = (item: Board) => ({
     x0: item.x0,
     x1: item.x1,
@@ -689,16 +691,16 @@ function updateSidePanelOverlapAudit(
     const verticalId = sidePanel.id === "SidePanel_L" ? "V1" : "V2";
     const verticalBoard = verticalBoards.find((item) => item.id === verticalId);
     if (!verticalBoard || !sharesXSlab(sidePanel, verticalBoard)) continue;
-    const expectedFrontY = -fpt;
-    const expectedCarcassY0 = fpt;
+    const expectedFrontY = -debug.frontFaceAllowance;
+    const expectedCarcassY0 = 0;
     if (Math.abs(sidePanel.y0 - expectedFrontY) > 0.01) {
       validation?.warnings.push(
-        `${sidePanel.id} y0 ${sidePanel.y0} differs from expected front wrap ${expectedFrontY} (FPT ${fpt}).`,
+        `${sidePanel.id} y0 ${sidePanel.y0} differs from expected front wrap ${expectedFrontY} (FPT ${debug.frontFaceAllowance}).`,
       );
     }
     if (Math.abs(verticalBoard.y0 - expectedCarcassY0) > 0.01) {
       validation?.warnings.push(
-        `${verticalId} y0 ${verticalBoard.y0} differs from expected carcass start ${expectedCarcassY0} (FPT ${fpt}).`,
+        `${verticalId} y0 ${verticalBoard.y0} differs from expected carcass start ${expectedCarcassY0}.`,
       );
     }
   }
@@ -897,8 +899,10 @@ function addVBoardSideProfileSkeletons(
         v34AvoidanceCutout(params, avoidance),
         true,
       );
-      vBoard.profileVector = rearStileProfile;
+      // cutProfileVector stays board-local (Fusion / nesting). Cab Lab 3D
+      // treats YZ profileVector as cabinet-local, so V3/V4 must sit on y0.
       vBoard.cutProfileVector = rearStileProfile;
+      vBoard.profileVector = cabinetYzFromBoardLocal(vBoard, rearStileProfile);
       vBoard.notes = [
         ...(vBoard.notes ?? []).filter((note) => note !== "V3/V4 exact geometry deferred"),
         "Style 1 rear-stile profile implemented; rear top/bottom L-slot refinements deferred.",
@@ -1029,6 +1033,14 @@ function buildV12CombinedSideProfileVector(
   }
 
   return points;
+}
+
+/** Map a board-local YZ outline onto cabinet YZ (board origin at y0 / z0). */
+function cabinetYzFromBoardLocal(
+  board: Pick<Board, "y0" | "z0">,
+  local: Array<{ y: number; z: number }>,
+): Array<{ y: number; z: number }> {
+  return local.map((point) => ({ y: board.y0 + point.y, z: board.z0 + point.z }));
 }
 
 function buildV34Style1RearStileProfileVector(

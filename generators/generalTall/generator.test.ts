@@ -237,6 +237,18 @@ function vectorRange(points: Array<{ y: number; z: number }>) {
   };
 }
 
+function cabinetYzProfile(board: { y0: number; z0: number }, local: Array<{ y: number; z: number }>) {
+  return local.map((point) => ({ y: board.y0 + point.y, z: board.z0 + point.z }));
+}
+
+function assertV34CabinetProfile(board: { y0: number; y1: number; z0: number; profileVector?: Array<{ y: number; z: number }>; cutProfileVector?: Array<{ y: number; z: number }> }, local: Array<{ y: number; z: number }>) {
+  assert.deepEqual(board.cutProfileVector, local);
+  assert.deepEqual(board.profileVector, cabinetYzProfile(board, local));
+  const placed = vectorRange(board.profileVector!);
+  assert.equal(placed.minY, board.y0);
+  assert.equal(placed.maxY, board.y1);
+}
+
 function expectedUiDefaultV12RealProfile() {
   return [
     { y: 70, z: 0 },
@@ -502,7 +514,7 @@ function testVBoardSideProfileSkeletonStyle1() {
   }
 
   for (const vBoard of vBoards(result).filter((board) => board.id === "V3" || board.id === "V4")) {
-    assert.deepEqual(vBoard.profileVector, vBoard.cutProfileVector);
+    assert.deepEqual(vBoard.profileVector, cabinetYzProfile(vBoard, vBoard.cutProfileVector!));
     assert(vBoard.notes?.includes("Style 1 rear-stile profile implemented; rear top/bottom L-slot refinements deferred."));
     assert(!vBoard.notes?.includes("V3/V4 exact geometry deferred"));
     assert(!vBoard.notes?.includes("Exact side profile cut vector deferred; profileFeatures contain slot/notch data"));
@@ -607,8 +619,7 @@ function testV34Style1RearStileProfileDefaultUiConfig() {
   for (const id of ["V3", "V4"]) {
     const board = result.boards.find((candidate) => candidate.id === id);
     assert(board, `${id} missing`);
-    assert.deepEqual(board.cutProfileVector, expected);
-    assert.deepEqual(board.profileVector, expected);
+    assertV34CabinetProfile(board, expected);
     assert.deepEqual(vectorRange(board.cutProfileVector!), { minY: 0, maxY: 150, minZ: 0, maxZ: 2000 });
     assert.deepEqual(board.cutProfileVector?.at(0), board.cutProfileVector?.at(-1));
     assert(board.notes?.includes("Style 1 rear-stile profile implemented; rear top/bottom L-slot refinements deferred."));
@@ -640,6 +651,30 @@ function testV34Style1RearStileProfileDefaultUiConfig() {
   assert.equal(v34SlotFeatures.length, 4);
   assert(v34SlotFeatures.every((feature) => feature.boundaryType === "full_zi"));
   assert(v34SlotFeatures.every((feature) => feature.y0 === 0 && feature.y1 === 50));
+
+  // Regress the manually tested deep cabinet: D=1074, FPT=16,
+  // therefore the shared structural rear datum is midDepth=1058.
+  const deep = generateGeneralTallCabinet({ ...uiDefaultParams(), cabinetDepth: 1074 });
+  const h13 = deep.boards.find((board) => board.id === "H13_bottom");
+  const h24 = deep.boards.find((board) => board.id === "H24_bottom");
+  const h34 = deep.boards.find((board) => board.id === "H34_bottom");
+  const t4 = deep.boards.find((board) => board.id === "T4");
+  const t5 = deep.boards.find((board) => board.id === "T5");
+  assert(h13 && h24 && h34 && t4 && t5);
+  for (const id of ["V3", "V4"]) {
+    const board = deep.boards.find((candidate) => candidate.id === id);
+    assert(board, `${id} missing at D=1074`);
+    assert.equal(board.y0, 908);
+    assert.equal(board.y1, 1058);
+    assert.equal(vectorRange(board.cutProfileVector!).minY, 0);
+    assert.equal(vectorRange(board.cutProfileVector!).maxY, 150);
+    assert.equal(vectorRange(board.profileVector!).minY, 908);
+    assert.equal(vectorRange(board.profileVector!).maxY, 1058);
+    assert.equal(board.y0, id === "V3" ? h13.y1 : h24.y1);
+    assert.equal(board.y1, h34.y1);
+    assert.equal(board.y1, t4.y1);
+    assert.equal(board.y1, t5.y0);
+  }
 }
 
 function testV34RearAvoidanceCutoutPartialDepth() {
@@ -652,8 +687,7 @@ function testV34RearAvoidanceCutoutPartialDepth() {
   for (const id of ["V3", "V4"]) {
     const board = result.boards.find((candidate) => candidate.id === id);
     assert(board, `${id} missing`);
-    assert.deepEqual(board.cutProfileVector, expected);
-    assert.deepEqual(board.profileVector, expected);
+    assertV34CabinetProfile(board, expected);
     assert.deepEqual(vectorRange(board.cutProfileVector!), { minY: 0, maxY: 150, minZ: 0, maxZ: 2000 });
     assert(board.notes?.includes("Rear avoidance cutout applied to V3/V4 rear-stile profile."));
     assert(hasOrderedSequence(board.cutProfileVector, [
@@ -678,8 +712,7 @@ function testV34RearAvoidanceCutoutFullDepth() {
   for (const id of ["V3", "V4"]) {
     const board = result.boards.find((candidate) => candidate.id === id);
     assert(board, `${id} missing`);
-    assert.deepEqual(board.cutProfileVector, expected);
-    assert.deepEqual(board.profileVector, expected);
+    assertV34CabinetProfile(board, expected);
     assert.deepEqual(board.cutProfileVector?.at(0), { y: 0, z: 400 });
     assert.deepEqual(board.cutProfileVector?.at(-1), { y: 0, z: 400 });
     assert(!hasPoint(board.cutProfileVector, { y: 0, z: 0 }));
@@ -2080,12 +2113,12 @@ function testSidePanelsBothEnabled() {
   assert(v2);
   assert.equal(v2.x0, 584);
   assert.equal(v2.x1, 600);
-  assert.equal(v2.y0, 16);
-  assert.equal(v2.y1, 584);
+  assert.equal(v2.y0, 0);
+  assert.equal(v2.y1, 568);
   const v1 = result.boards.find((board) => board.id === "V1");
   assert(v1);
-  assert.equal(v1.y0, 16);
-  assert.equal(v1.y1, 584);
+  assert.equal(v1.y0, 0);
+  assert.equal(v1.y1, 568);
 }
 
 function testVCarcassYAlignsWithSidePanelWhenOnlyRightEnabled() {
@@ -2111,9 +2144,9 @@ function testVCarcassYAlignsWithSidePanelWhenOnlyRightEnabled() {
   assert(sidePanel);
   assert(v2);
   assert.equal(sidePanel.y0, -16);
-  assert.equal(v2.y0, 16);
-  assert.equal(v2.y1, 660);
-  assert.equal(v2.y0 - sidePanel.y0, 32);
+  assert.equal(v2.y0, 0);
+  assert.equal(v2.y1, 644);
+  assert.equal(v2.y0 - sidePanel.y0, 16);
   assert(!(result.validation.warnings || []).some((warning) => warning.includes("differs from expected carcass start")));
 }
 

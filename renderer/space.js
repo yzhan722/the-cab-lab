@@ -24,8 +24,9 @@ export const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.screenSpacePanning = true;
-// Left-drag orbits in interact.js (click still selects). Hold the wheel to
-// orbit, right-drag to pan, scroll the wheel to zoom.
+// Wheel zooms toward the cursor (the point under the pointer stays put), not the
+// screen centre. Hold the wheel to orbit, right-drag to pan.
+controls.zoomToCursor = true;
 controls.mouseButtons = {
   LEFT: null,
   MIDDLE: THREE.MOUSE.ROTATE,
