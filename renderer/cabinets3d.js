@@ -6,6 +6,7 @@ import { scene, camera } from "./space.js";
 import { getJob, getSelectedId, getSpace, getPlanes, resultFor } from "./job.js";
 import { getModule } from "./modules.js";
 import { footprintFits, minClearHeight, clearHeightAt, slicePlane } from "./spaces.js";
+import { log } from "./log.js";
 
 export const HANDLE_SIZE = 44;
 
@@ -14,6 +15,62 @@ const carcassMat = new THREE.MeshStandardMaterial({ color: 0xc9b799, roughness: 
 const frontMat = new THREE.MeshStandardMaterial({ color: 0x9ec5d8, roughness: 0.6 });
 const errorMat = new THREE.MeshStandardMaterial({ color: 0xd94b4b, roughness: 0.8, transparent: true, opacity: 0.35 });
 const edgeMat = new THREE.LineBasicMaterial({ color: 0x4a4034 });
+function lit(src, color, emissive) {
+  const m = src.clone();
+  m.color.setHex(color);
+  m.emissive.setHex(emissive);
+  m.emissiveIntensity = 0.7;
+  return m;
+}
+// Amber, not the door blue (0x9ec5d8) and not the carcass tan.
+const hlCarcass = lit(carcassMat, 0xffe08a, 0xc46a12);
+const hlFront = lit(frontMat, 0xffe08a, 0xc46a12);
+const hlEdge = new THREE.LineBasicMaterial({ color: 0xffc14a });
+
+let highlightedBoard = null; // { cabId, boardId } | null — display only, not job.json
+const boardListeners = new Set();
+
+export function getHighlightedBoard() {
+  return highlightedBoard;
+}
+export function onBoardHighlight(fn) {
+  boardListeners.add(fn);
+  return () => boardListeners.delete(fn);
+}
+/** Highlight one generated board in 3D (and, via listeners, the Boards table). */
+export function highlightBoard(cabId, boardId, { toggle = false, scroll = false } = {}) {
+  const next = (!cabId || !boardId)
+    ? null
+    : (toggle && highlightedBoard && highlightedBoard.cabId === cabId && highlightedBoard.boardId === boardId)
+      ? null
+      : { cabId, boardId };
+  const same = highlightedBoard?.cabId === next?.cabId && highlightedBoard?.boardId === next?.boardId;
+  if (same) {
+    if (scroll) for (const fn of boardListeners) fn(highlightedBoard, { scroll: true });
+    return;
+  }
+  highlightedBoard = next;
+  log("board.select", { id: next?.cabId || cabId || null, boardId: next?.boardId || null });
+  paintBoardHighlight();
+  for (const fn of boardListeners) fn(highlightedBoard, { scroll });
+}
+function paintBoardHighlight() {
+  const h = highlightedBoard;
+  root.traverse((o) => {
+    if (o.isMesh && o.userData?.kind === "board") {
+      const on = !!(h && o.userData.cabId === h.cabId && o.userData.boardId && o.userData.boardId === h.boardId);
+      const front = o.userData.matKind === "front";
+      if (o.userData.matKind === "carcass" || o.userData.matKind === "front") {
+        o.material = on ? (front ? hlFront : hlCarcass) : (front ? frontMat : carcassMat);
+        o.renderOrder = on ? 8 : 0;
+      }
+    } else if (o.isLineSegments && o.userData?.kind === "board-edge") {
+      const on = !!(h && o.userData.cabId === h.cabId && o.userData.boardId === h.boardId);
+      o.material = on ? hlEdge : edgeMat;
+      o.renderOrder = on ? 9 : 0;
+    }
+  });
+}
 const envMat = new THREE.LineBasicMaterial({ color: 0x4f86e0 });
 const envMatIdle = new THREE.LineBasicMaterial({ color: 0x6b7784, transparent: true, opacity: 0.35 });
 const envMatBad = new THREE.LineBasicMaterial({ color: 0xd94b4b });
@@ -172,22 +229,27 @@ function buildGroup(cab) {
     const solid = modOf.envelopeProfile
       ? new THREE.Mesh(prismYZ(slabOutline(modOf.envelopeProfile(cab.params), env.D), env.x0, env.x1), carcassMat)
       : boxMesh(env.x0, env.x1, env.y0, env.y1, env.z0, env.z1, carcassMat);
-    solid.userData = { kind: "board", cabId: cab.id, boardId: null };
+    solid.userData = { kind: "board", cabId: cab.id, boardId: null, matKind: "carcass" };
     group.add(solid);
     // The prism geometry is in local coordinates; the box geometry is centred and positioned, so its edges need the same placement.
-    group.add(modOf.envelopeProfile
+    const volEdge = modOf.envelopeProfile
       ? new THREE.LineSegments(new THREE.EdgesGeometry(solid.geometry), edgeMat)
-      : boxEdges(env.x0, env.x1, env.y0, env.y1, env.z0, env.z1, edgeMat));
+      : boxEdges(env.x0, env.x1, env.y0, env.y1, env.z0, env.z1, edgeMat);
+    volEdge.userData = { kind: "board-edge", cabId: cab.id, boardId: null };
+    group.add(volEdge);
   } else if (hasBoards) {
     for (const b of result.boards) {
-      const mat = b.category === "front_panel" ? frontMat : carcassMat;
+      const isFront = b.category === "front_panel";
+      const mat = isFront ? frontMat : carcassMat;
       // A board with an outline (robe side cut to the roof, an OHC divider / T3 / T4 with its notches) is drawn
       // from that outline, not its bounding box.
       const { geo, cut } = boardGeometry(b);
       const mesh = cut ? new THREE.Mesh(geo, mat) : boxMesh(b.x0, b.x1, b.y0, b.y1, b.z0, b.z1, mat);
-      mesh.userData = { kind: "board", cabId: cab.id, boardId: b.id };
+      mesh.userData = { kind: "board", cabId: cab.id, boardId: b.id, matKind: isFront ? "front" : "carcass" };
       group.add(mesh);
-      group.add(cut ? new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), edgeMat) : boxEdges(b.x0, b.x1, b.y0, b.y1, b.z0, b.z1, edgeMat));
+      const edge = cut ? new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), edgeMat) : boxEdges(b.x0, b.x1, b.y0, b.y1, b.z0, b.z1, edgeMat);
+      edge.userData = { kind: "board-edge", cabId: cab.id, boardId: b.id };
+      group.add(edge);
     }
   } else {
     // Invalid params: show the envelope as a red ghost so it can still be fixed.
@@ -258,6 +320,18 @@ export function syncCabinets() {
       root.remove(g);
       groups.delete(id);
     }
+  }
+  const prev = highlightedBoard;
+  if (highlightedBoard) {
+    let found = false;
+    groups.get(highlightedBoard.cabId)?.traverse((o) => {
+      if (o.userData?.kind === "board" && o.userData.boardId === highlightedBoard.boardId) found = true;
+    });
+    if (!found) highlightedBoard = null;
+  }
+  paintBoardHighlight();
+  if (highlightedBoard !== prev) {
+    for (const fn of boardListeners) fn(highlightedBoard, { scroll: false });
   }
 }
 
@@ -375,6 +449,40 @@ export function hideGhost() {
   ghostEdges.visible = false;
   hideNoseGhost();
   hideWidthRect();
+  hideLoungeGhost();
+}
+
+/** Lounge polyline preview: one box per I-segment plus the wall-edge rubber-band. */
+const loungeGhostMat = new THREE.MeshBasicMaterial({ color: 0x4f86e0, transparent: true, opacity: 0.18, depthWrite: false });
+const loungeGhostEdgeMat = new THREE.LineBasicMaterial({ color: 0x4f86e0 });
+let loungeGhost = null;
+export function showLoungeGhost(segs, height, path, hover, { clamped = false } = {}) {
+  hideLoungeGhost();
+  loungeGhostMat.color.setHex(clamped ? 0xf0a050 : 0x4f86e0);
+  loungeGhostEdgeMat.color.setHex(clamped ? 0xf0a050 : 0x4f86e0);
+  loungeGhost = new THREE.Group();
+  for (const s of segs || []) {
+    loungeGhost.add(boxMesh(s.x0, s.x1, s.y0, s.y1, 0, Math.max(height, 1), loungeGhostMat));
+    loungeGhost.add(boxEdges(s.x0, s.x1, s.y0, s.y1, 0, Math.max(height, 1), loungeGhostEdgeMat));
+  }
+  const pts = [...(path || [])];
+  if (hover) pts.push(hover);
+  if (pts.length >= 2) {
+    const arr = [];
+    for (const p of pts) arr.push(p.x, p.y, 1);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+    const line = new THREE.Line(geo, loungeGhostEdgeMat);
+    line.renderOrder = 8;
+    loungeGhost.add(line);
+  }
+  scene.add(loungeGhost);
+}
+export function hideLoungeGhost() {
+  if (!loungeGhost) return;
+  scene.remove(loungeGhost);
+  loungeGhost.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+  loungeGhost = null;
 }
 
 /**

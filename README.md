@@ -6,9 +6,8 @@ Workflow: **step 1 define the space** (Box, or Vehicle = box rear + side-profile
 The box *is* the generator's outer size. Pull its faces to change W / D / H, drag the orange bars to move
 zone boundaries, edit details in the right panel. Boards are always regenerated from `job.json`, never edited.
 
-Current state: Small cabinet and Overhead cabinet wired end to end (place, move, rotate, resize, zones, checks, board table, save / load, undo).
-Bedroom (the vehicle's nose slab, for now one solid volume) is wired with its own placement flow. Other modules are
-listed but not wired yet.
+Current state: Small, Tall v0, Base v0, Overhead and U overhead cabinets wired end to end (place, move, rotate, resize, zones, checks, board table, save / load, undo).
+Bedroom (the vehicle's nose slab, for now one solid volume) is wired with its own placement flow. **Bed Box** and **Bed Side Table** attach to the body. **Lounge** is a floor polyline (I / L / U) then seat depth toward the room.
 
 ## Run
 
@@ -45,7 +44,8 @@ desktop shortcut works without a build step; run `npm run build:generators` afte
 - `renderer/interact.js` — left-button interaction: three-step placement, Move command, type-ins, select, resize, dividers, keys
 - `renderer/presets.js` — per-module starting sizes (preset H today; a settings UI will edit them)
 - `renderer/hud.js` — cursor tooltip
-- `renderer/panel.js` — right panel (space or selected cabinet) and drawer tables
+- `renderer/panel.js` — Parameters pane (space or selected cabinet) and docked Checks / Boards
+- `renderer/dock.js` — drag Parameters / Checks / Boards to the left, right or bottom edge
 - `renderer/ui.js` — shell wiring
 - `generators/` — Cab Lab's own cabinet generators (TypeScript). Independent of the Fusion plugin.
 - `renderer/gen/` — generated ESM bundles of `generators/*/generator.ts` (do not edit)
@@ -56,22 +56,13 @@ desktop shortcut works without a build step; run `npm run build:generators` afte
 
 ## Controls
 
-- Hold wheel: orbit · right-drag: pan · scroll: zoom
-- Placing, three steps (SketchUp-style): pick a module → hover shows the face under the cursor (floor, ceiling, any
-  wall, any face of a cabinet; blue sheet) → click a corner or grid point on it → draw a flat, zero-thickness rectangle
-  on that face and click the opposite corner (a corner is shared by up to three faces: drag onto the floor, a side
-  wall, or the other wall — the face is not locked until the second click) → pull the rectangle off the face, one way only (away from the wall / floor / cabinet —
-  it can't be pulled into them) and click. Side walls are only selectable from the **room inside**; the wall facing the
-  camera is ignored until you orbit to its inner face (a corner clicked earlier
-  still keeps that wall as a candidate). Floor and ceiling stay pickable from either side. A cabinet top
-  flush with the ceiling counts as the ceiling (pull down into the room). A cabinet
-  face flush with a wall (no room outward) pulls into the room on that same plane;
-  an empty side wall is still not selectable from outside. Only the two in-plane sizes are typed in
-  step 2; `Enter` creates with the preset size along the face normal (H on floors, D on front/back walls, W on side
-  walls). Boxes are axis-aligned. The door side is chosen when the box is created: never against a wall or a
+- Left-drag (when idle): orbit · Alt+left: orbit any time · Hold wheel: orbit · right-drag: pan · scroll: zoom toward cursor
+- Placing, three steps (SketchUp-style): pick a module → **floor-standing modules start on the floor** (z = 0; walls and cabinet tops are not start faces) → click a corner or grid point → draw a flat, zero-thickness rectangle on the floor and click the opposite corner → pull the rectangle up (away from the floor) and click. Overhead cabinets still start on a **ceiling ∩ wall** line (see below). Side walls are only selectable from the **room inside** during Move / overhead. Floor and ceiling stay pickable from either side when the command allows it. A cabinet top
+  flush with the ceiling counts as the ceiling (pull down into the room). Only the two in-plane sizes are typed in
+  step 2; `Enter` creates with the preset height. Boxes are axis-aligned. The door side is chosen when the box is created: never against a wall or a
   neighbour (a blocked side puts the doors opposite); otherwise the long horizontal edge is the door edge, facing the
-  middle of the room (ties: front). W is always the edge along the doors, D the edge through them (fronts included in the
-  box), H the height — so a box drawn on a side wall becomes a cabinet whose W runs along that wall. After creating you stay armed;
+  middle of the room (ties: front). W is the edge along the doors, D the edge through them (fronts included in the
+  box), H the height. After creating you stay armed;
   `Shift+click` repeats the last size at a new corner; typing digits re-sizes the box you just made. `Esc` restarts /
   stops.
 - Space dialog: Front / Right / Back / Left wall checkboxes (all on by default). Below the space fields:
@@ -109,8 +100,16 @@ desktop shortcut works without a build step; run `npm run build:generators` afte
   difference) and the cabinet-level fields folded below (outer size incl. doors, bottom height, stock). Zones are
   never narrower than 150 mm and always sum to W. Every editor action is one undo step. The orange vertical bars in
   3D are the same boundaries. Boards are emitted in their final assembled pose (fronts at local −Y, top at H).
-- **Bedroom** is a rail group: hovering it opens a flyout with **Body** (the nose slab below), **Bed Box** (below) and
-  **Bed Side Table** (listed, not wired yet). Groups are declared in `MODULE_GROUPS` in `renderer/modules.js`.
+- **Tall** (`tallCabinet`, `generators/tallCabinet/generator.ts`): a floor-standing box like Small, taller, with
+  extra zone types (`left_door` / `right_door` / `double_door` / `drawer` / `open`). Sides are full-depth (Y 0…D,
+  Z 0…H) — not Fusion Style-1 rear stiles. Zones stack top → bottom; middles sit on the boundaries; open zones emit
+  no front; a double door is two leaves with a full front-clearance gap on centre. Same three-step floor placement
+  as Small (z = 0), same Face / `R` / orange divider bars. Joinery is Small's through tongues / side grooves.
+- **Base** (`kitchenCabinet`, `generators/kitchenCabinet/generator.ts`): Small's floor box with a toe-kick. Envelope
+  height includes the plinth (default 150 mm, set back 50 mm). Sides are full-height with a front-bottom notch;
+  `PLINTH_FRONT` closes the kick; the carcass floor (BOTTOM) sits on the plinth; doors start above it. Same three-step
+  floor placement as Small. No V-panel slots, wheel arch or B-system in v0.
+- **Bedroom** is a rail group: hovering it opens a flyout with **Body**, **Bed Box** and **Bed Side Table**. Groups are declared in `MODULE_GROUPS` in `renderer/modules.js`.
 - **Bedroom › Bed Box** (one per vehicle, needs the Body first — the flyout item is disabled until it exists): the bed
   base as one solid volume, glued to the Body's room-side face, centred on the van's centre line and symmetric about
   it; height = tunnel boot height (420 until the boot is defined on the Body). Two steps: **width** — a 2D line on the
@@ -121,6 +120,19 @@ desktop shortcut works without a build step; run `npm run build:generators` afte
   steps (nothing is duplicated). It follows the Body: change the Body's depth, redefine the space or edit W / D in the
   panel and `attach()` re-centres it and keeps it against the Body face (`bindToJob` in `job.js`); the Body's depth drag
   ignores cabinets attached to it. Generator `generators/bedBox/generator.ts`.
+- **Bedroom › Bed Side Table** (needs the Body; flyout item disabled until it exists): a nightstand volume against the
+  Body and a side wall, one per side. Two steps: **width** — move toward a wall, the line grows from that wall (stops
+  at the Bed Box, or the van centre line if there is no bed), type `W`; hovering a side that already has a table
+  edits it; **length** — pull into the room from the body face. `pose` is `rotZ 180`, `x` = wall + W (left) or the
+  right wall. Face and `R` are refused. Generator `generators/bedSideTable/generator.ts`.
+- **Lounge** (`loungeGenerator`, `generators/loungeGenerator/generator.ts`): a floor polyline of the back / wall edge,
+  then seat depth toward the room. 2 points = I (one box), 3 = L, 4 = U (three I segments). Click vertices on the
+  floor (Shift keeps the next one on axis); Enter after two points, or the fourth click, pulls the seat into the
+  room (type D). Boards are XY plates of height H. Face and `R` are refused. Pose is `rotZ 0` at the AABB min corner.
+- **U overhead** (`uShapeOverheadCabinet`, `generators/uShapeOverheadCabinet/generator.ts`): three `generateOverheadCabinet`
+  runs in one ceiling box (back along X at the far wall, left and right along Y). Opening at local y = 0. Placement is
+  the same ceiling ∩ wall flow as Overhead; the drawn box is the outer W×D×H. Face and `R` are refused; H grows down.
+  Arm depth is the OHC depth of each run (default 350). Wrapper envelope has no extra front inset.
 - **Bedroom › Body** (nose slab, one per vehicle): not a free box. Its front is the nose cross-section, its width the van's
   inside width, its height the roof at the room-side face; the only free size is the depth **from the front**.
   Pick the module → the slab is already shown at the preset depth (700). Click anywhere → the room-side face follows
@@ -156,6 +168,7 @@ desktop shortcut works without a build step; run `npm run build:generators` afte
 - `M` move · `O` face · `R` rotate 90° · `F` frame selection (or space) · `Del` remove · `Esc` cancel / deselect
 - `Ctrl+N/O/S` new / open / save (`Ctrl+Shift+S` save as) · `Ctrl+Z/Y` undo / redo · `F12` dev tools
 - `Ctrl+Shift+L` open the usage log folder
+- `Ctrl+Shift+P` capture the 3D views into `logs/` · `Ctrl+Shift+Q` QA layout of every module
 
 ## Usage log
 

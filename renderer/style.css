@@ -18,10 +18,13 @@
   --cmdbar-h: 32px;
   --status-h: 24px;
   --left-w: 148px;
-  --right-w: 280px;
-  --right-w-wide: 540px;
-  --drawer-h: 220px;
-  --drawer-tabs-h: 30px;
+  /* Dock sizes are written by dock.js (remembered per edge). */
+  --dock-left-w: 260px;
+  --dock-right-w: 280px;
+  --dock-bottom-h: 220px;
+  --dock-wide-w: 540px;
+  --dock-collapsed-w: 30px;
+  --dock-tabs-h: 30px;
 }
 
 * { box-sizing: border-box; }
@@ -45,19 +48,19 @@ button {
 }
 button:disabled { cursor: default; opacity: 0.45; }
 
+/* The two dock columns are `auto`: each side dock sets its own width (0 when
+   it holds no pane), so the viewport keeps whatever is left. */
 #app {
   display: grid;
   height: 100vh;
   grid-template-rows: var(--topbar-h) var(--cmdbar-h) 1fr var(--status-h);
-  grid-template-columns: var(--left-w) 1fr var(--right-w);
+  grid-template-columns: var(--left-w) auto 1fr auto;
   grid-template-areas:
-    "top top top"
-    "cmd cmd cmd"
-    "left center right"
-    "status status status";
+    "top top top top"
+    "cmd cmd cmd cmd"
+    "left dleft center dright"
+    "status status status status";
 }
-/* An overhead cabinet is selected: the right panel becomes its editor page. */
-#app.wide-right { grid-template-columns: var(--left-w) 1fr var(--right-w-wide); }
 
 /* ---------- top bar ---------- */
 
@@ -223,54 +226,127 @@ button:disabled { cursor: default; opacity: 0.45; }
   letter-spacing: 0.04em;
 }
 
-/* bottom drawer */
-#drawer {
-  flex: 0 0 var(--drawer-h);
+/* ---------- docks (Parameters / Checks / Boards) ----------
+   One dock per edge; a pane is moved between them by dragging its tab.
+   min-height: 0 so a long Boards table cannot override the size (flex
+   min-height:auto would otherwise eat the 3D viewport). */
+
+.dock {
+  position: relative;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   background: var(--bg-panel);
+}
+.dock.empty { display: none; }
+.dock.resizing { transition: none; }
+.dock.collapsed .dock-body { display: none; }
+
+#dock-left { grid-area: dleft; width: var(--dock-left-w); border-right: 1px solid var(--line); }
+#dock-right { grid-area: dright; width: var(--dock-right-w); border-left: 1px solid var(--line); }
+#dock-left.wide { width: max(var(--dock-left-w), var(--dock-wide-w)); }
+#dock-right.wide { width: max(var(--dock-right-w), var(--dock-wide-w)); }
+#dock-left.collapsed, #dock-right.collapsed { width: var(--dock-collapsed-w); }
+
+.dock-bottom {
+  flex: 0 0 var(--dock-bottom-h);
+  max-height: 55%;
   border-top: 1px solid var(--line);
   transition: flex-basis 120ms ease;
 }
-#drawer.collapsed { flex-basis: var(--drawer-tabs-h); }
-#drawer.collapsed .drawer-body { display: none; }
-.drawer-tabs {
+.dock-bottom.collapsed { flex-basis: var(--dock-tabs-h); max-height: var(--dock-tabs-h); }
+
+.dock-resize {
+  position: absolute;
+  z-index: 6;
+  touch-action: none;
+}
+.dock-bottom > .dock-resize { top: -4px; left: 0; right: 0; height: 8px; cursor: ns-resize; }
+#dock-left > .dock-resize { top: 0; bottom: 0; right: -4px; width: 8px; cursor: ew-resize; }
+#dock-right > .dock-resize { top: 0; bottom: 0; left: -4px; width: 8px; cursor: ew-resize; }
+.dock-resize:hover, .dock.resizing .dock-resize { background: var(--accent); opacity: 0.55; }
+
+.dock-tabs {
+  flex: 0 0 var(--dock-tabs-h);
   display: flex;
   align-items: center;
-  height: var(--drawer-tabs-h);
-  padding: 0 6px;
+  height: var(--dock-tabs-h);
+  padding: 0 4px 0 6px;
   border-bottom: 1px solid var(--line);
   gap: 2px;
 }
+.dock-tablist { flex: 1; min-width: 0; display: flex; align-items: stretch; height: 100%; gap: 2px; overflow: hidden; }
 .dtab {
   height: 100%;
   padding: 0 10px;
+  white-space: nowrap;
   color: var(--text-2);
   border-bottom: 2px solid transparent;
+  touch-action: none;
 }
 .dtab:hover { color: var(--text); }
 .dtab.active { color: var(--text); border-bottom-color: var(--accent); }
+.dtab.dragging { background: var(--accent-soft); color: var(--text); }
 .dtoggle {
-  width: 26px;
+  flex: 0 0 auto;
+  width: 22px;
   height: 22px;
   border-radius: var(--radius);
   color: var(--text-2);
 }
-.dtoggle:hover { background: var(--bg-hover); }
-#drawer.collapsed .dtoggle { transform: rotate(180deg); }
-.drawer-body { flex: 1; overflow: auto; padding: 10px 12px; }
-.dpane { display: none; }
-.dpane.active { display: block; }
+.dtoggle:hover { background: var(--bg-hover); color: var(--text); }
+.dock-body { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 
-/* ---------- right panel ---------- */
+.dock-side.collapsed .dock-tabs {
+  flex: 1 1 auto;
+  height: auto;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 0;
+}
+.dock-side.collapsed .dock-tablist { flex: 0 0 auto; flex-direction: column; height: auto; }
+.dock-side.collapsed .dtab {
+  writing-mode: vertical-rl;
+  height: auto;
+  padding: 10px 2px;
+  border-bottom: 0;
+  border-right: 2px solid transparent;
+}
+.dock-side.collapsed .dtab.active { border-right-color: var(--accent); }
+
+.pane { display: none; flex: 1; min-height: 0; overflow: auto; flex-direction: column; }
+.pane.active { display: flex; }
+.pane.pad { padding: 10px 12px; }
+
+#dockDrops { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+.dock-drop {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: rgba(79, 134, 224, 0.05);
+  color: var(--text-3);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.dock-drop.here { border-style: solid; }
+.dock-drop.on {
+  border: 2px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* ---------- Parameters pane ---------- */
 
 #rightpanel {
-  grid-area: right;
-  display: flex;
-  flex-direction: column;
   background: var(--bg-panel);
-  border-left: 1px solid var(--line);
-  overflow-y: auto;
 }
 .panel-head {
   padding: 12px 14px 10px;
@@ -290,6 +366,25 @@ button:disabled { cursor: default; opacity: 0.45; }
   color: var(--text-3);
   margin-bottom: 8px;
 }
+
+/* Numbers fold: everything that can be done by dragging geometry stays out of
+   sight until the user asks for the values. */
+.pfold { border-bottom: 1px solid var(--line); }
+.pfold-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 14px;
+  text-align: left;
+  color: var(--text-2);
+}
+.pfold-head:hover { background: var(--bg-hover); color: var(--text); }
+.pfold-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+.pfold-sum { flex: 1; min-width: 0; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pfold-caret { flex: 0 0 auto; color: var(--text-3); font-size: 10px; }
+.pfold:not(.open) .pfold-body { display: none; }
+.pfold-body > .panel-section:last-child, .pfold-body > .panel-fold:last-child { border-bottom: 0; }
 .field {
   display: grid;
   grid-template-columns: 1fr 96px;
@@ -649,6 +744,48 @@ table.grid { border-collapse: collapse; width: 100%; font-size: 11px; }
 table.grid th, table.grid td { padding: 3px 8px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 table.grid th { color: var(--text-3); font-weight: 500; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; }
 table.grid td:nth-child(n+4) { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- boards tree ----------
+   One node per cabinet in the job (collapsed by default), its boards inside. */
+
+.pane[data-pane="boards"] { padding: 4px 0; }
+.pane[data-pane="boards"] > .empty { padding: 6px 12px; }
+.tree { display: flex; flex-direction: column; }
+.tnode + .tnode { border-top: 1px solid var(--line); }
+.tnode-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  text-align: left;
+  color: var(--text-2);
+  border-left: 2px solid transparent;
+}
+.tnode-head:hover { background: var(--bg-hover); color: var(--text); }
+.tnode-head.open { color: var(--text); }
+.tnode-head.cur { border-left-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.tcaret { flex: 0 0 9px; color: var(--text-3); font-size: 10px; }
+.tname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tmeta { flex: 0 0 auto; color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+.tnode-body { padding: 0 0 6px 19px; }
+.tnode-body > .empty { padding: 2px 12px 4px; }
+.tboards { display: flex; flex-direction: column; }
+.tboard {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 3px 12px 3px 0;
+  text-align: left;
+  color: var(--text-2);
+  border-left: 2px solid transparent;
+}
+.tboard:hover { background: var(--bg-hover); color: var(--text); }
+.tboard.sel { background: rgba(224, 163, 79, 0.22); color: var(--text); border-left-color: #e0a34f; }
+.tboard.sel .tboard-name { color: #e0a34f; font-weight: 600; }
+.tboard-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tboard-size { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--text-3); }
 
 /* ---------- status bar ---------- */
 

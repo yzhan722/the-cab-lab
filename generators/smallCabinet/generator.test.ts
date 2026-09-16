@@ -138,6 +138,36 @@ function testFrontPanelCalculatorNeighborHalfClearance(): void {
   assert.equal(Math.round((upper.z0 - lower.z1) * 10) / 10, 2.5);
 }
 
+function testFrontPanelCalculatorDoubleDoorCountsAsFront(): void {
+  const zones = [
+    {
+      type: "double_door",
+      zTop: 784,
+      zBottom: 384,
+      clearZ0: 392,
+      clearZ1: 784,
+    },
+    {
+      type: "open",
+      zTop: 384,
+      zBottom: 16,
+      clearZ0: 16,
+      clearZ1: 376,
+    },
+  ];
+  const upper = computeFrontPanelBounds({
+    cabinetWidth: 600,
+    cabinetHeight: 800,
+    panelThickness: 16,
+    frontClearance: 2.5,
+    zone: zones[0],
+    zoneIndex: 0,
+    zones,
+  });
+  assert.equal(upper.sources.z0, "clear_plus_fc_open_neighbor");
+  assert.equal(upper.z0, 394.5);
+}
+
 function testSingleRightDoor(): void {
   const result = generateSmallCabinet({
     cabinetWidth: 450,
@@ -211,6 +241,7 @@ function testThreeZonesBoardCount(): void {
 const tests = [
   testTwoZoneDoorDrawer,
   testFrontPanelCalculatorNeighborHalfClearance,
+  testFrontPanelCalculatorDoubleDoorCountsAsFront,
   testSingleRightDoor,
   testLocksCanBeDisabled,
   testRejectsBadZoneTypeAndHeightSum,

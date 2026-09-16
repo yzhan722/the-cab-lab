@@ -13,7 +13,12 @@ const ENTRIES = [
   { name: "smallCabinet", entry: path.join(MODULES_DIR, "smallCabinet", "generator.ts") },
   { name: "bedroom", entry: path.join(MODULES_DIR, "bedroom", "generator.ts") },
   { name: "bedBox", entry: path.join(MODULES_DIR, "bedBox", "generator.ts") },
+  { name: "bedSideTable", entry: path.join(MODULES_DIR, "bedSideTable", "generator.ts") },
+  { name: "tallCabinet", entry: path.join(MODULES_DIR, "tallCabinet", "generator.ts") },
+  { name: "kitchenCabinet", entry: path.join(MODULES_DIR, "kitchenCabinet", "generator.ts") },
   { name: "overheadCabinet", entry: path.join(MODULES_DIR, "overheadCabinet", "generator.ts") },
+  { name: "loungeGenerator", entry: path.join(MODULES_DIR, "loungeGenerator", "generator.ts") },
+  { name: "uShapeOverheadCabinet", entry: path.join(MODULES_DIR, "uShapeOverheadCabinet", "generator.ts") },
 ];
 
 async function main() {

@@ -36,6 +36,8 @@
         <button class="tb seg" data-view="top">Top</button>
         <button class="tb seg" data-view="front">Front</button>
         <button class="tb seg" data-view="side">Side</button>
+        <button class="tb" data-action="capture" title="Save 3D views to the log folder (Ctrl+Shift+P)">Capture</button>
+        <button class="tb" data-action="qa" title="Place every module, capture each one (Ctrl+Shift+Q)">QA</button>
       </div>
       <div class="spacer"></div>
       <div class="group hint" id="modeHint"></div>
@@ -81,6 +83,15 @@
       <div class="rail-foot">Pick a module: click a point on a face, draw the rectangle, pull it off the face. Overhead starts on a ceiling edge.<br>Tab / digits type sizes · Enter keeps the preset · Shift+click repeats the last size<br>M move · O face · R rotate · F frame · Del remove · Esc cancel</div>
     </aside>
 
+    <section class="dock dock-side" id="dock-left" data-zone="left">
+      <div class="dock-tabs">
+        <div class="dock-tablist"></div>
+        <button class="dtoggle" data-collapse title="Collapse / expand this dock">◂</button>
+      </div>
+      <div class="dock-body"></div>
+      <div class="dock-resize" title="Drag to resize · double-click to collapse"></div>
+    </section>
+
     <main id="center">
       <div id="viewport"></div>
       <div id="viewport-hud">
@@ -98,21 +109,24 @@
         <button class="tb primary" data-define-space>Define the space</button>
       </div>
 
-      <section id="drawer" class="collapsed">
-        <div class="drawer-tabs">
-          <button class="dtab active" data-dtab="checks">Checks</button>
-          <button class="dtab" data-dtab="boards">Boards</button>
-          <div class="spacer"></div>
-          <button class="dtoggle" id="drawerToggle" title="Show / hide">▴</button>
+      <section class="dock dock-bottom" id="dock-bottom" data-zone="bottom">
+        <div class="dock-resize" title="Drag to resize · double-click to collapse"></div>
+        <div class="dock-tabs">
+          <div class="dock-tablist"></div>
+          <button class="dtoggle" data-collapse title="Collapse / expand this dock">▾</button>
         </div>
-        <div class="drawer-body">
-          <div class="dpane active" data-dpane="checks"><div class="empty">Select a cabinet to see its checks.</div></div>
-          <div class="dpane" data-dpane="boards"><div class="empty">Select a cabinet to list its boards.</div></div>
-        </div>
+        <div class="dock-body"></div>
       </section>
     </main>
 
-    <aside id="rightpanel"></aside>
+    <section class="dock dock-side" id="dock-right" data-zone="right">
+      <div class="dock-tabs">
+        <div class="dock-tablist"></div>
+        <button class="dtoggle" data-collapse title="Collapse / expand this dock">▸</button>
+      </div>
+      <div class="dock-body"></div>
+      <div class="dock-resize" title="Drag to resize · double-click to collapse"></div>
+    </section>
 
     <footer id="statusbar">
       <span class="st">mm</span>
@@ -128,6 +142,18 @@
       <span class="st" id="stFile">Untitled</span>
     </footer>
 
+  </div>
+
+  <!-- Dockable panes: dock.js moves these into the left / right / bottom dock. -->
+  <div id="panes" class="hidden">
+    <div class="pane" data-pane="params" id="rightpanel"></div>
+    <div class="pane pad" data-pane="checks" data-dpane="checks"><div class="empty">Select a cabinet to see its checks.</div></div>
+    <div class="pane pad" data-pane="boards" data-dpane="boards"><div class="empty">Select a cabinet to list its boards.</div></div>
+  </div>
+  <div id="dockDrops" class="hidden">
+    <div class="dock-drop" data-zone="left"></div>
+    <div class="dock-drop" data-zone="right"></div>
+    <div class="dock-drop" data-zone="bottom"></div>
   </div>
 
   <div id="spaceDialog" class="modal hidden">

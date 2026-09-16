@@ -4,7 +4,7 @@
 // the file immediately (atomic in main.js); a failure is reported back to the
 // caller and logged, never swallowed.
 //
-//   { version: 1, space: { vehicle: { defaults: {...} } }, materials: { defaults: { finish, stock } }, presets: {...} }
+//   { version: 1, space: { vehicle: { defaults: {...} } }, materials: { defaults: { finish, stock } }, layout: { dock, paramsOpen }, presets: {...} }
 import { log } from "./log.js";
 
 const bridge = window.cablab || null;

@@ -1,5 +1,6 @@
-// Shell wiring: top bar, module rail, drawer, status bar, file actions.
-import { setView, drawSpace, floorPointAt, canvas } from "./space.js";
+// Shell wiring: top bar, module rail, docks, status bar, file actions.
+import { setView, drawSpace, floorPointAt, canvas, captureViewportViews, setQaCamera } from "./space.js";
+import { initDock } from "./dock.js";
 import * as job from "./job.js";
 import { MODULES, MODULE_GROUPS, PLANNED_MODULES } from "./modules.js";
 import { syncCabinets, syncPlanes } from "./cabinets3d.js";
@@ -8,6 +9,7 @@ import { renderPanel } from "./panel.js";
 import { openSpaceDialog, isOpen as spaceDialogOpen } from "./spaceDialog.js";
 import { loadSettings } from "./settings.js";
 import { log, attachJob } from "./log.js";
+import { buildQaScene, buildQaModule, QA_SHOTS, frameSelectedCabinet } from "./qaScene.js";
 
 attachJob(job);
 
@@ -120,7 +122,7 @@ function refreshRail() {
     armed: placing
       ? MODULES[placing].placement === "ceiling"
         ? `Placing ${MODULES[placing].label} — click a corner where a wall meets the ceiling · W runs along that wall · draw on the ceiling, the wall or a side face · Esc to stop`
-        : `Placing ${MODULES[placing].label} — click a corner to start · Shift+click repeats the last size · digits re-size the last box · Esc to stop`
+        : `Placing ${MODULES[placing].label} — click a point on the floor to start · Shift+click repeats the last size · digits re-size the last box · Esc to stop`
       : "",
     face: "Draw the rectangle on this face · Tab / digits type its two sizes · click the opposite corner · Enter creates with the preset depth",
     extrude: "Pull the rectangle off the face (one way only) · snaps to faces and corners · click or Enter to create · Esc to restart",
@@ -132,8 +134,13 @@ function refreshRail() {
     "nose.drag": "Drag the room-side face along the van · snaps to roof breaks, the seam and cabinet faces · type “From front” · click or Enter to create · Esc cancels",
     "bedbox.width": "Bed Box — width: move sideways, the line grows symmetrically from the centre line · type W · click or Enter to lock · Esc cancels",
     "bedbox.depth": "Bed Box — length: pull into the room from the body face · snaps to cabinet faces · type D · click or Enter to create · Esc cancels",
+    "bedside.width": "Bed Side Table — move to a side wall; width grows from that wall · type W · click or Enter to lock · Esc cancels",
+    "bedside.depth": "Bed Side Table — length: pull into the room from the body face · type D · click or Enter to create · Esc cancels",
+    "lounge.path": "Lounge — click 2–4 floor points along the back edge (I / L / U) · Enter after 2 starts the depth · Shift keeps the next vertex on axis · Esc cancels",
+    "lounge.depth": "Lounge — pull the seat toward the room · type D · click or Enter to create · Esc cancels",
     "plane.pick": "Plane — click a wall or a cabinet face to offset from · Esc cancels",
     "plane.offset": "Plane — pull a parallel copy into the room · type Offset · snaps to faces · click or Enter to place · Esc cancels",
+    "view.orbit": "Orbit — release to stop",
   };
   $("#modeHint").textContent = HINTS[mode] || "";
 }
@@ -145,17 +152,6 @@ $$("#viewGroup [data-view]").forEach((btn) => {
     setView(btn.dataset.view);
     log("view", { view: btn.dataset.view });
     $("#viewLabel").textContent = btn.textContent;
-  });
-});
-
-// --- drawer ---------------------------------------------------------------------
-const drawer = $("#drawer");
-$("#drawerToggle").addEventListener("click", () => drawer.classList.toggle("collapsed"));
-$$("#drawer .dtab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    $$("#drawer .dtab").forEach((t) => t.classList.toggle("active", t === tab));
-    $$("#drawer .dpane").forEach((p) => p.classList.toggle("active", p.dataset.dpane === tab.dataset.dtab));
-    drawer.classList.remove("collapsed");
   });
 });
 
@@ -218,6 +214,93 @@ async function doSave(forceDialog = false) {
   if (path) job.markSaved(path);
 }
 
+async function captureViews(opts = {}) {
+  if (!bridge || !bridge.logCapture) return;
+  const cap = captureViewportViews();
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const space = job.getSpace();
+  const j = job.getJob();
+  try {
+    const res = await bridge.logCapture({
+      stamp,
+      images: cap.images,
+      subdir: opts.subdir,
+      latest: opts.latest,
+    });
+    log("view.capture", {
+      ok: !!(res && res.ok),
+      dir: res && res.dir,
+      latestDir: res && res.latestDir,
+      files: res && res.files,
+      subdir: opts.subdir || null,
+      pixels: { w: cap.width, h: cap.height },
+      camera: cap.camera,
+      view: $("#viewGroup .active")?.dataset.view || "3d",
+      selected: job.getSelectedId(),
+      cabinets: (j.cabinets || []).map((c) => ({ id: c.id, moduleId: c.moduleId })),
+      space: space
+        ? {
+          kind: job.getJob().space?.kind,
+          W: Math.round(space.bounds.maxX - space.bounds.minX),
+          D: Math.round(space.bounds.maxY - space.bounds.minY),
+          H: Math.round(space.height),
+        }
+        : null,
+    });
+    if (opts.hint !== false) {
+      const hint = $("#modeHint");
+      if (hint) {
+        hint.textContent = res && res.ok
+          ? "Views saved — Ctrl+Shift+L opens the log folder"
+          : "View capture wrote no images";
+        setTimeout(() => refreshRail(), 2500);
+      }
+    }
+  } catch (err) {
+    log("view.capture", { ok: false, error: err && err.message });
+  }
+}
+
+function waitFrames(n = 2) {
+  return new Promise((resolve) => {
+    const step = (left) => (left <= 0 ? resolve() : requestAnimationFrame(() => step(left - 1)));
+    step(n);
+  });
+}
+
+async function runQaSceneAndCapture() {
+  const n = (job.getJob().cabinets || []).length;
+  if (n && !window.confirm("Replace this job with a QA layout of every module?")) return;
+  disarm();
+  const report = buildQaScene();
+  setQaCamera();
+  await waitFrames(2);
+  await captureViews({ hint: false });
+  const isolated = [];
+  for (const shot of QA_SHOTS) {
+    const one = buildQaModule(shot);
+    await waitFrames(2);
+    frameSelectedCabinet();
+    await waitFrames(1);
+    await captureViews({ subdir: `qa/${shot.tag}`, latest: false, hint: false });
+    isolated.push({ tag: shot.tag, ...(one.cabinet || {}) });
+  }
+  buildQaScene();
+  setQaCamera();
+  const failed = [
+    ...report.failed,
+    ...isolated.filter((c) => c && (c.errors?.length || !c.fits)),
+  ];
+  log("qa.visual", { overviewFailed: report.failed, isolated: isolated.map((c) => c && ({ tag: c.tag, moduleId: c.moduleId, boards: c.boards, fits: c.fits, errors: c.errors })) });
+  const hint = $("#modeHint");
+  if (hint) {
+    hint.textContent = failed.length
+      ? `QA: ${failed.length} issue(s) — per-module shots in logs/qa/`
+      : "QA: all modules captured — logs/qa/";
+    setTimeout(() => refreshRail(), 4000);
+  }
+}
+
 const ACTIONS = {
   new: doNew,
   open: doOpen,
@@ -227,15 +310,20 @@ const ACTIONS = {
   move: () => startMove(),
   orient: () => startOrient(),
   plane: () => startPlane(),
+  capture: () => captureViews(),
+  qa: () => runQaSceneAndCapture(),
 };
 $$("[data-action]").forEach((btn) => {
   btn.addEventListener("click", () => ACTIONS[btn.dataset.action]?.());
 });
 
 window.addEventListener("keydown", (e) => {
-  if (!e.ctrlKey || spaceDialogOpen()) return;
+  if (!e.ctrlKey) return;
   const k = e.key.toLowerCase();
   const inField = e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+  if (k === "p" && e.shiftKey) { e.preventDefault(); captureViews(); return; }
+  if ((k === "q" || k === "g") && e.shiftKey) { e.preventDefault(); runQaSceneAndCapture(); return; }
+  if (spaceDialogOpen()) return;
   if (k === "l" && e.shiftKey) { e.preventDefault(); log("logs.open"); bridge?.openLogs?.(); }
   else if (k === "n") { e.preventDefault(); doNew(); }
   else if (k === "o") { e.preventDefault(); doOpen(); }
@@ -282,8 +370,10 @@ $("[data-define-space]").addEventListener("click", () => openSpaceDialog());
 
 job.onChange(refreshAll);
 onModeChange(() => { refreshRail(); refreshStatus(); });
+// User defaults (settings.json) must be in memory before docks restore and
+// the dialog offers them.
+await loadSettings();
+initDock();
 refreshAll();
 setView("3d");
-// User defaults (settings.json) must be in memory before the dialog offers them.
-await loadSettings();
 if (!job.hasSpace()) openSpaceDialog();

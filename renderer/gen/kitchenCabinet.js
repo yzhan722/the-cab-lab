@@ -1,4 +1,4 @@
-// Generated from generators/smallCabinet/generator.ts - do not edit.
+// Generated from generators/kitchenCabinet/generator.ts - do not edit.
 
 // generators/smallCabinet/frontPanelCalculator.ts
 function round1(value) {
@@ -51,8 +51,6 @@ function frontPanelIsValid(bounds, eps = 1e-6) {
 var SHELF_TONGUE_DEPTH_FRACTION = 1 / 3;
 var GROOVE_LENGTH_OVERSIZE = 5;
 var GROOVE_THICKNESS_OVERSIZE = 0.5;
-var GROOVE_Y_OVERSIZE = GROOVE_LENGTH_OVERSIZE;
-var GROOVE_Z_OVERSIZE = GROOVE_THICKNESS_OVERSIZE;
 function round12(value) {
   return Math.round(value * 10) / 10;
 }
@@ -325,10 +323,12 @@ function applyBackJoinery(board, panelThickness) {
   return buildBackJoineryFeatures(spec);
 }
 
-// generators/smallCabinet/generator.ts
+// generators/kitchenCabinet/generator.ts
 var DEFAULT_CPT = 16;
 var DEFAULT_FPT = 16;
 var DEFAULT_CLEARANCE = 2.5;
+var DEFAULT_PLINTH_HEIGHT = 150;
+var DEFAULT_PLINTH_SETBACK = 50;
 var DEFAULT_LOCK_SIDE_DISTANCE = 80;
 var DEFAULT_CARCASS_COLOR = "White Stipple";
 var LOCK_SLOT_LENGTH = 55;
@@ -340,6 +340,9 @@ function round13(value) {
 function asNum(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+function carcassInteriorHeight(cabinetHeight, plinthHeight, panelThickness) {
+  return round13(cabinetHeight - plinthHeight - 2 * panelThickness);
 }
 function normalizeZoneType(raw) {
   const t = String(raw || "").trim().toLowerCase();
@@ -377,22 +380,40 @@ function rectProfile(plane, a0, a1, b0, b1) {
     { x: 0, y: 0 }
   ];
 }
-function pushBoard(boards, board) {
-  boards.push(board);
+function sideProfileWithKick(D, H, P, setback) {
+  if (setback < 1) {
+    return [
+      { y: 0, z: 0 },
+      { y: D, z: 0 },
+      { y: D, z: H },
+      { y: 0, z: H },
+      { y: 0, z: 0 }
+    ];
+  }
+  return [
+    { y: setback, z: 0 },
+    { y: D, z: 0 },
+    { y: D, z: H },
+    { y: 0, z: H },
+    { y: 0, z: P },
+    { y: setback, z: P },
+    { y: setback, z: 0 }
+  ];
+}
+function asSmallBoard(board) {
+  return board;
 }
 function lockCutoutFromCenter(centerX, centerZ) {
-  const width = LOCK_SLOT_WIDTH;
-  const height = LOCK_SLOT_LENGTH;
   return {
-    x0: round13(centerX - width / 2),
-    x1: round13(centerX + width / 2),
-    z0: round13(centerZ - height / 2),
-    z1: round13(centerZ + height / 2),
+    x0: round13(centerX - LOCK_SLOT_WIDTH / 2),
+    x1: round13(centerX + LOCK_SLOT_WIDTH / 2),
+    z0: round13(centerZ - LOCK_SLOT_LENGTH / 2),
+    z1: round13(centerZ + LOCK_SLOT_LENGTH / 2),
     radius: LOCK_SLOT_RADIUS,
     orientation: "vertical"
   };
 }
-function emptyParamsResult(params, W, D, H, CPT, FPT, clearance, locksEnabled, lockSideDistance, leftSideDoorColor, rightSideDoorColor, carcassColor, carcassColorName, errors, warnings) {
+function emptyParamsResult(W, D, H, CPT, FPT, clearance, P, setback, locksEnabled, lockSideDistance, leftSideDoorColor, rightSideDoorColor, carcassColor, carcassColorName, errors, warnings) {
   return {
     params: {
       cabinetWidth: W,
@@ -401,6 +422,8 @@ function emptyParamsResult(params, W, D, H, CPT, FPT, clearance, locksEnabled, l
       panelThickness: CPT,
       frontPanelThickness: FPT,
       frontClearance: clearance,
+      plinthHeight: P,
+      plinthSetback: setback,
       locksEnabled,
       lockSideDistance,
       carcassColor,
@@ -414,7 +437,7 @@ function emptyParamsResult(params, W, D, H, CPT, FPT, clearance, locksEnabled, l
     validation: { errors, warnings }
   };
 }
-function generateSmallCabinet(params) {
+function generateKitchenCabinet(params) {
   const errors = [];
   const warnings = [];
   const W = round13(asNum(params.cabinetWidth));
@@ -423,6 +446,8 @@ function generateSmallCabinet(params) {
   const CPT = round13(asNum(params.panelThickness, DEFAULT_CPT));
   const FPT = round13(asNum(params.frontPanelThickness, DEFAULT_FPT));
   const clearance = round13(asNum(params.frontClearance, DEFAULT_CLEARANCE));
+  const P = round13(asNum(params.plinthHeight, DEFAULT_PLINTH_HEIGHT));
+  const setback = round13(asNum(params.plinthSetback, DEFAULT_PLINTH_SETBACK));
   const locksEnabled = params.locksEnabled !== false;
   const defaultLockSideDistance = round13(asNum(params.lockSideDistance, DEFAULT_LOCK_SIDE_DISTANCE));
   const leftSideDoorColor = Boolean(params.leftSideDoorColor);
@@ -437,12 +462,13 @@ function generateSmallCabinet(params) {
   if (clearance < 0) errors.push("frontClearance must be >= 0.");
   if (W <= 2 * CPT) errors.push("cabinetWidth must be greater than 2 \xD7 panelThickness.");
   if (D <= CPT) errors.push("cabinetDepth must be greater than panelThickness.");
-  if (H <= 2 * CPT) errors.push("cabinetHeight must be greater than 2 \xD7 panelThickness.");
-  const interiorH = round13(H - 2 * CPT);
+  if (P <= 0) errors.push("plinthHeight must be > 0.");
+  if (setback < 0) errors.push("plinthSetback must be >= 0.");
+  if (setback >= D - CPT) errors.push("plinthSetback must be less than cabinetDepth \u2212 panelThickness.");
+  if (H - P <= 2 * CPT) errors.push("plinthHeight leaves no carcass interior (cabinetHeight \u2212 plinthHeight must be greater than 2 \xD7 panelThickness).");
+  const interiorH = carcassInteriorHeight(H, P, CPT);
   const rawZones = Array.isArray(params.zones) ? params.zones : [];
-  if (rawZones.length < 1) {
-    errors.push("At least one functional zone is required.");
-  }
+  if (rawZones.length < 1) errors.push("At least one functional zone is required.");
   const parsed = [];
   for (let i = 0; i < rawZones.length; i += 1) {
     const zone = rawZones[i];
@@ -466,20 +492,21 @@ function generateSmallCabinet(params) {
     });
   }
   const zoneHeightSum = round13(parsed.reduce((sum, z) => sum + z.height, 0));
-  if (parsed.length > 0 && Math.abs(zoneHeightSum - interiorH) > 0.05) {
+  if (parsed.length > 0 && interiorH > 0 && Math.abs(zoneHeightSum - interiorH) > 0.05) {
     errors.push(
-      `Zone heights sum to ${zoneHeightSum} mm but interior height is ${interiorH} mm (cabinetHeight \u2212 2\xD7CPT).`
+      `Zone heights sum to ${zoneHeightSum} mm but carcass interior is ${interiorH} mm (cabinetHeight \u2212 plinthHeight \u2212 2\xD7CPT).`
     );
   }
   if (errors.length > 0) {
     return emptyParamsResult(
-      params,
       W,
       D,
       H,
       CPT,
       FPT,
       clearance,
+      P,
+      setback,
       locksEnabled,
       defaultLockSideDistance,
       leftSideDoorColor,
@@ -491,9 +518,11 @@ function generateSmallCabinet(params) {
     );
   }
   const boards = [];
-  const features = [];
+  const joinery = [];
+  const lockFeatures = [];
   const resolvedZones = [];
-  pushBoard(boards, {
+  const sideOutline = sideProfileWithKick(D, H, P, setback);
+  boards.push({
     id: "SIDE_L",
     name: "Left side",
     category: "side_panel",
@@ -508,9 +537,10 @@ function generateSmallCabinet(params) {
     z0: 0,
     z1: H,
     useDoorColor: leftSideDoorColor,
-    profileVector: rectProfile("YZ", 0, D, 0, H)
+    notes: setback >= 1 ? [`Toe-kick notch ${setback} \xD7 ${P}`] : void 0,
+    profileVector: sideOutline
   });
-  pushBoard(boards, {
+  boards.push({
     id: "SIDE_R",
     name: "Right side",
     category: "side_panel",
@@ -525,8 +555,28 @@ function generateSmallCabinet(params) {
     z0: 0,
     z1: H,
     useDoorColor: rightSideDoorColor,
-    profileVector: rectProfile("YZ", 0, D, 0, H)
+    notes: setback >= 1 ? [`Toe-kick notch ${setback} \xD7 ${P}`] : void 0,
+    profileVector: sideOutline
   });
+  const plinth = {
+    id: "PLINTH_FRONT",
+    name: "Plinth front",
+    category: "plinth",
+    boardType: "plinth_front",
+    materialThickness: CPT,
+    profilePlane: "XZ",
+    thicknessAxis: "Y",
+    x0: CPT,
+    x1: W - CPT,
+    y0: setback,
+    y1: round13(setback + CPT),
+    z0: 0,
+    z1: P,
+    notes: [`Set back ${setback} mm from carcass front`],
+    profileVector: rectProfile("XZ", CPT, W - CPT, 0, P)
+  };
+  boards.push(plinth);
+  const carcassFloor = P;
   const bottom = {
     id: "BOTTOM",
     name: "Bottom",
@@ -539,8 +589,8 @@ function generateSmallCabinet(params) {
     x1: W - CPT,
     y0: 0,
     y1: D - CPT,
-    z0: 0,
-    z1: CPT,
+    z0: carcassFloor,
+    z1: round13(carcassFloor + CPT),
     profileVector: rectProfile("XY", CPT, W - CPT, 0, D - CPT)
   };
   const top = {
@@ -559,10 +609,9 @@ function generateSmallCabinet(params) {
     z1: H,
     profileVector: rectProfile("XY", CPT, W - CPT, 0, D - CPT)
   };
-  features.push(...applyHorizontalJoinery(bottom, CPT));
-  features.push(...applyHorizontalJoinery(top, CPT));
-  pushBoard(boards, bottom);
-  pushBoard(boards, top);
+  joinery.push(...applyHorizontalJoinery(asSmallBoard(bottom), CPT));
+  joinery.push(...applyHorizontalJoinery(asSmallBoard(top), CPT));
+  boards.push(bottom, top);
   const back = {
     id: "BACK",
     name: "Rear vertical",
@@ -575,12 +624,12 @@ function generateSmallCabinet(params) {
     x1: W - CPT,
     y0: D - CPT,
     y1: D,
-    z0: CPT,
+    z0: round13(carcassFloor + CPT),
     z1: H - CPT,
-    profileVector: rectProfile("XZ", CPT, W - CPT, CPT, H - CPT)
+    profileVector: rectProfile("XZ", CPT, W - CPT, carcassFloor + CPT, H - CPT)
   };
-  features.push(...applyBackJoinery(back, CPT));
-  pushBoard(boards, back);
+  joinery.push(...applyBackJoinery(asSmallBoard(back), CPT));
+  boards.push(back);
   let zCursor = H - CPT;
   for (let i = 0; i < parsed.length; i += 1) {
     const zone = parsed[i];
@@ -588,16 +637,14 @@ function generateSmallCabinet(params) {
     const zBottom = round13(zCursor - zone.height);
     const hasMiddleAbove = i > 0;
     const hasMiddleBelow = i < parsed.length - 1;
-    const clearZ1 = round13(zTop - (hasMiddleAbove ? CPT / 2 : 0));
-    const clearZ0 = round13(zBottom + (hasMiddleBelow ? CPT / 2 : 0));
     resolvedZones.push({
       id: zone.id,
       type: zone.type,
       height: zone.height,
       zTop,
       zBottom,
-      clearZ0,
-      clearZ1,
+      clearZ1: round13(zTop - (hasMiddleAbove ? CPT / 2 : 0)),
+      clearZ0: round13(zBottom + (hasMiddleBelow ? CPT / 2 : 0)),
       lockEnabled: zone.lockEnabled,
       lockSideDistance: zone.lockSideDistance
     });
@@ -605,8 +652,6 @@ function generateSmallCabinet(params) {
   }
   for (let i = 0; i < resolvedZones.length - 1; i += 1) {
     const boundaryZ = resolvedZones[i].zBottom;
-    const z0 = round13(boundaryZ - CPT / 2);
-    const z1 = round13(boundaryZ + CPT / 2);
     const mid = {
       id: `MID_${i + 1}`,
       name: `Middle ${i + 1}`,
@@ -619,18 +664,18 @@ function generateSmallCabinet(params) {
       x1: W - CPT,
       y0: 0,
       y1: D - CPT,
-      z0,
-      z1,
+      z0: round13(boundaryZ - CPT / 2),
+      z1: round13(boundaryZ + CPT / 2),
       notes: [`Centered on boundary between ${resolvedZones[i].id} and ${resolvedZones[i + 1].id}`],
       profileVector: rectProfile("XY", CPT, W - CPT, 0, D - CPT)
     };
-    features.push(...applyHorizontalJoinery(mid, CPT));
-    pushBoard(boards, mid);
+    joinery.push(...applyHorizontalJoinery(asSmallBoard(mid), CPT));
+    boards.push(mid);
   }
   const sideL = boards.find((b) => b.id === "SIDE_L");
   const sideR = boards.find((b) => b.id === "SIDE_R");
-  if (sideL) attachSideGrooveProfileFeatures(sideL, features);
-  if (sideR) attachSideGrooveProfileFeatures(sideR, features);
+  if (sideL) attachSideGrooveProfileFeatures(asSmallBoard(sideL), joinery);
+  if (sideR) attachSideGrooveProfileFeatures(asSmallBoard(sideR), joinery);
   for (let i = 0; i < resolvedZones.length; i += 1) {
     const zone = resolvedZones[i];
     const bounds = computeFrontPanelBounds({
@@ -687,7 +732,7 @@ function generateSmallCabinet(params) {
       centerZ = Math.max(front.z0 + halfH, Math.min(front.z1 - halfH, centerZ));
       front.lockCutout = lockCutoutFromCenter(centerX, centerZ);
       front.thickness = FPT;
-      features.push({
+      lockFeatures.push({
         id: `${front.id}_door_lock`,
         type: "door_lock",
         targetBoardId: front.id,
@@ -706,17 +751,18 @@ function generateSmallCabinet(params) {
         }
       ];
     }
-    pushBoard(boards, front);
+    boards.push(front);
   }
   if (errors.length > 0) {
     return emptyParamsResult(
-      params,
       W,
       D,
       H,
       CPT,
       FPT,
       clearance,
+      P,
+      setback,
       locksEnabled,
       defaultLockSideDistance,
       leftSideDoorColor,
@@ -727,6 +773,7 @@ function generateSmallCabinet(params) {
       warnings
     );
   }
+  const features = [...joinery, ...lockFeatures];
   return {
     params: {
       cabinetWidth: W,
@@ -735,6 +782,8 @@ function generateSmallCabinet(params) {
       panelThickness: CPT,
       frontPanelThickness: FPT,
       frontClearance: clearance,
+      plinthHeight: P,
+      plinthSetback: setback,
       locksEnabled,
       lockSideDistance: defaultLockSideDistance,
       carcassColor,
@@ -749,38 +798,26 @@ function generateSmallCabinet(params) {
     debug: {
       interiorHeight: interiorH,
       zoneHeightSum,
-      boardCounts: {
-        sides: 2,
-        back: 1,
-        top: 1,
-        bottom: 1,
-        middles: Math.max(0, resolvedZones.length - 1),
-        fronts: resolvedZones.length,
-        total: boards.length
-      },
-      featureCounts: {
-        shelfTongues: features.filter((f) => f.type === "shelf_tongue").length,
-        backTongues: features.filter((f) => f.type === "back_tongue").length,
-        sideGrooves: features.filter((f) => f.type === "side_groove").length,
-        doorLocks: features.filter((f) => f.type === "door_lock").length
-      },
-      frontFaceAllowance: FPT,
+      carcassFloor,
+      boardFrame: "final",
       spec: {
-        form: "simple_floor_box",
-        rearJoin: "tongue_height_1_3",
-        middleAnchor: "center_on_boundary",
-        shelfJoinery: "tongue_depth_1_3_through_groove_plus5_plus0_5",
+        form: "floor_box_with_plinth",
         zoneTypes: ["left_door", "right_door", "drawer"]
       }
     }
   };
 }
 export {
+  DEFAULT_CLEARANCE,
+  DEFAULT_CPT,
+  DEFAULT_FPT,
+  DEFAULT_PLINTH_HEIGHT,
+  DEFAULT_PLINTH_SETBACK,
   GROOVE_LENGTH_OVERSIZE,
   GROOVE_THICKNESS_OVERSIZE,
-  GROOVE_Y_OVERSIZE,
-  GROOVE_Z_OVERSIZE,
+  carcassInteriorHeight,
   computeFrontPanelBounds,
-  generateSmallCabinet,
-  shelfTongueYRange
+  generateKitchenCabinet,
+  shelfTongueYRange,
+  sideProfileWithKick
 };

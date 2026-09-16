@@ -8,16 +8,23 @@
  *   middle centerline (doors meet with total FC across the seam).
  */
 
-import type { ResolvedZone, SmallCabinetZoneType } from "./types.ts";
+/** Zone slice the calculator needs. `type` is a string so Tall can reuse the same neighbor rules. */
+export interface FrontPanelZone {
+  type: string;
+  zTop: number;
+  zBottom: number;
+  clearZ0: number;
+  clearZ1: number;
+}
 
 export interface FrontPanelClearanceInput {
   cabinetWidth: number;
   cabinetHeight: number;
   panelThickness: number;
   frontClearance: number;
-  zone: ResolvedZone;
+  zone: FrontPanelZone;
   zoneIndex: number;
-  zones: ResolvedZone[];
+  zones: FrontPanelZone[];
 }
 
 export interface FrontPanelBounds {
@@ -37,8 +44,8 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function zoneHasFront(type: SmallCabinetZoneType): boolean {
-  return type === "left_door" || type === "right_door" || type === "drawer";
+function zoneHasFront(type: string): boolean {
+  return type === "left_door" || type === "right_door" || type === "drawer" || type === "double_door";
 }
 
 /**

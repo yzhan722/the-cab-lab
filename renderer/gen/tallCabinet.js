@@ -1,4 +1,4 @@
-// Generated from generators/smallCabinet/generator.ts - do not edit.
+// Generated from generators/tallCabinet/generator.ts - do not edit.
 
 // generators/smallCabinet/frontPanelCalculator.ts
 function round1(value) {
@@ -51,8 +51,6 @@ function frontPanelIsValid(bounds, eps = 1e-6) {
 var SHELF_TONGUE_DEPTH_FRACTION = 1 / 3;
 var GROOVE_LENGTH_OVERSIZE = 5;
 var GROOVE_THICKNESS_OVERSIZE = 0.5;
-var GROOVE_Y_OVERSIZE = GROOVE_LENGTH_OVERSIZE;
-var GROOVE_Z_OVERSIZE = GROOVE_THICKNESS_OVERSIZE;
 function round12(value) {
   return Math.round(value * 10) / 10;
 }
@@ -325,7 +323,7 @@ function applyBackJoinery(board, panelThickness) {
   return buildBackJoineryFeatures(spec);
 }
 
-// generators/smallCabinet/generator.ts
+// generators/tallCabinet/generator.ts
 var DEFAULT_CPT = 16;
 var DEFAULT_FPT = 16;
 var DEFAULT_CLEARANCE = 2.5;
@@ -345,8 +343,13 @@ function normalizeZoneType(raw) {
   const t = String(raw || "").trim().toLowerCase();
   if (t === "left_door" || t === "left-door" || t === "left") return "left_door";
   if (t === "right_door" || t === "right-door" || t === "right") return "right_door";
+  if (t === "double_door" || t === "double-door" || t === "double") return "double_door";
   if (t === "drawer" || t === "draw") return "drawer";
+  if (t === "open" || t === "open_space" || t === "open-space") return "open";
   return null;
+}
+function zoneHasDoorLock(type) {
+  return type === "left_door" || type === "right_door" || type === "double_door";
 }
 function rectProfile(plane, a0, a1, b0, b1) {
   const w = Math.max(0, a1 - a0);
@@ -377,22 +380,20 @@ function rectProfile(plane, a0, a1, b0, b1) {
     { x: 0, y: 0 }
   ];
 }
-function pushBoard(boards, board) {
-  boards.push(board);
+function asSmallBoard(board) {
+  return board;
 }
 function lockCutoutFromCenter(centerX, centerZ) {
-  const width = LOCK_SLOT_WIDTH;
-  const height = LOCK_SLOT_LENGTH;
   return {
-    x0: round13(centerX - width / 2),
-    x1: round13(centerX + width / 2),
-    z0: round13(centerZ - height / 2),
-    z1: round13(centerZ + height / 2),
+    x0: round13(centerX - LOCK_SLOT_WIDTH / 2),
+    x1: round13(centerX + LOCK_SLOT_WIDTH / 2),
+    z0: round13(centerZ - LOCK_SLOT_LENGTH / 2),
+    z1: round13(centerZ + LOCK_SLOT_LENGTH / 2),
     radius: LOCK_SLOT_RADIUS,
     orientation: "vertical"
   };
 }
-function emptyParamsResult(params, W, D, H, CPT, FPT, clearance, locksEnabled, lockSideDistance, leftSideDoorColor, rightSideDoorColor, carcassColor, carcassColorName, errors, warnings) {
+function emptyParamsResult(W, D, H, CPT, FPT, clearance, locksEnabled, lockSideDistance, leftSideDoorColor, rightSideDoorColor, carcassColor, carcassColorName, errors, warnings) {
   return {
     params: {
       cabinetWidth: W,
@@ -414,7 +415,57 @@ function emptyParamsResult(params, W, D, H, CPT, FPT, clearance, locksEnabled, l
     validation: { errors, warnings }
   };
 }
-function generateSmallCabinet(params) {
+function applyLock(front, hingeSide, inset, FPT, features) {
+  const handleIsRight = hingeSide === "left";
+  let centerX = handleIsRight ? front.x1 - inset : front.x0 + inset;
+  let centerZ = front.z1 - inset;
+  const halfW = LOCK_SLOT_WIDTH / 2;
+  const halfH = LOCK_SLOT_LENGTH / 2;
+  centerX = Math.max(front.x0 + halfW, Math.min(front.x1 - halfW, centerX));
+  centerZ = Math.max(front.z0 + halfH, Math.min(front.z1 - halfH, centerZ));
+  front.lockCutout = lockCutoutFromCenter(centerX, centerZ);
+  front.thickness = FPT;
+  features.push({
+    id: `${front.id}_door_lock`,
+    type: "door_lock",
+    targetBoardId: front.id,
+    x0: front.lockCutout.x0,
+    x1: front.lockCutout.x1,
+    z0: front.lockCutout.z0,
+    z1: front.lockCutout.z1,
+    source: "door_lock"
+  });
+  front.profileFeatures = [
+    {
+      id: `${front.id}_door_lock`,
+      type: "door_lock",
+      thickness: FPT,
+      ...front.lockCutout
+    }
+  ];
+}
+function makeFront(id, name, boardType, hingeSide, zoneId, FPT, x0, x1, z0, z1, note) {
+  return {
+    id,
+    name,
+    category: "front_panel",
+    boardType,
+    materialThickness: FPT,
+    profilePlane: "XZ",
+    thicknessAxis: "Y",
+    x0,
+    x1,
+    y0: -FPT,
+    y1: 0,
+    z0,
+    z1,
+    hingeSide,
+    zoneId,
+    notes: [note],
+    profileVector: rectProfile("XZ", x0, x1, z0, z1)
+  };
+}
+function generateTallCabinet(params) {
   const errors = [];
   const warnings = [];
   const W = round13(asNum(params.cabinetWidth));
@@ -440,28 +491,25 @@ function generateSmallCabinet(params) {
   if (H <= 2 * CPT) errors.push("cabinetHeight must be greater than 2 \xD7 panelThickness.");
   const interiorH = round13(H - 2 * CPT);
   const rawZones = Array.isArray(params.zones) ? params.zones : [];
-  if (rawZones.length < 1) {
-    errors.push("At least one functional zone is required.");
-  }
+  if (rawZones.length < 1) errors.push("At least one functional zone is required.");
   const parsed = [];
   for (let i = 0; i < rawZones.length; i += 1) {
     const zone = rawZones[i];
     const type = normalizeZoneType(zone?.type);
     const height = round13(asNum(zone?.height));
     if (!type) {
-      errors.push(`Zone ${i + 1}: unsupported type "${zone?.type}". Use left_door, right_door, or drawer.`);
+      errors.push(`Zone ${i + 1}: unsupported type "${zone?.type}". Use left_door, right_door, double_door, drawer, or open.`);
       continue;
     }
     if (height <= 0) {
       errors.push(`Zone ${i + 1}: height must be > 0.`);
       continue;
     }
-    const isDoor = type === "left_door" || type === "right_door";
     parsed.push({
       id: String(zone?.id || `zone-${i + 1}`),
       type,
       height,
-      lockEnabled: isDoor && locksEnabled && zone?.lockEnabled !== false,
+      lockEnabled: zoneHasDoorLock(type) && locksEnabled && zone?.lockEnabled !== false,
       lockSideDistance: round13(asNum(zone?.lockSideDistance, defaultLockSideDistance))
     });
   }
@@ -473,7 +521,6 @@ function generateSmallCabinet(params) {
   }
   if (errors.length > 0) {
     return emptyParamsResult(
-      params,
       W,
       D,
       H,
@@ -491,9 +538,10 @@ function generateSmallCabinet(params) {
     );
   }
   const boards = [];
-  const features = [];
+  const joinery = [];
+  const lockFeatures = [];
   const resolvedZones = [];
-  pushBoard(boards, {
+  boards.push({
     id: "SIDE_L",
     name: "Left side",
     category: "side_panel",
@@ -510,7 +558,7 @@ function generateSmallCabinet(params) {
     useDoorColor: leftSideDoorColor,
     profileVector: rectProfile("YZ", 0, D, 0, H)
   });
-  pushBoard(boards, {
+  boards.push({
     id: "SIDE_R",
     name: "Right side",
     category: "side_panel",
@@ -559,10 +607,9 @@ function generateSmallCabinet(params) {
     z1: H,
     profileVector: rectProfile("XY", CPT, W - CPT, 0, D - CPT)
   };
-  features.push(...applyHorizontalJoinery(bottom, CPT));
-  features.push(...applyHorizontalJoinery(top, CPT));
-  pushBoard(boards, bottom);
-  pushBoard(boards, top);
+  joinery.push(...applyHorizontalJoinery(asSmallBoard(bottom), CPT));
+  joinery.push(...applyHorizontalJoinery(asSmallBoard(top), CPT));
+  boards.push(bottom, top);
   const back = {
     id: "BACK",
     name: "Rear vertical",
@@ -579,8 +626,8 @@ function generateSmallCabinet(params) {
     z1: H - CPT,
     profileVector: rectProfile("XZ", CPT, W - CPT, CPT, H - CPT)
   };
-  features.push(...applyBackJoinery(back, CPT));
-  pushBoard(boards, back);
+  joinery.push(...applyBackJoinery(asSmallBoard(back), CPT));
+  boards.push(back);
   let zCursor = H - CPT;
   for (let i = 0; i < parsed.length; i += 1) {
     const zone = parsed[i];
@@ -588,16 +635,14 @@ function generateSmallCabinet(params) {
     const zBottom = round13(zCursor - zone.height);
     const hasMiddleAbove = i > 0;
     const hasMiddleBelow = i < parsed.length - 1;
-    const clearZ1 = round13(zTop - (hasMiddleAbove ? CPT / 2 : 0));
-    const clearZ0 = round13(zBottom + (hasMiddleBelow ? CPT / 2 : 0));
     resolvedZones.push({
       id: zone.id,
       type: zone.type,
       height: zone.height,
       zTop,
       zBottom,
-      clearZ0,
-      clearZ1,
+      clearZ1: round13(zTop - (hasMiddleAbove ? CPT / 2 : 0)),
+      clearZ0: round13(zBottom + (hasMiddleBelow ? CPT / 2 : 0)),
       lockEnabled: zone.lockEnabled,
       lockSideDistance: zone.lockSideDistance
     });
@@ -605,8 +650,6 @@ function generateSmallCabinet(params) {
   }
   for (let i = 0; i < resolvedZones.length - 1; i += 1) {
     const boundaryZ = resolvedZones[i].zBottom;
-    const z0 = round13(boundaryZ - CPT / 2);
-    const z1 = round13(boundaryZ + CPT / 2);
     const mid = {
       id: `MID_${i + 1}`,
       name: `Middle ${i + 1}`,
@@ -619,20 +662,21 @@ function generateSmallCabinet(params) {
       x1: W - CPT,
       y0: 0,
       y1: D - CPT,
-      z0,
-      z1,
+      z0: round13(boundaryZ - CPT / 2),
+      z1: round13(boundaryZ + CPT / 2),
       notes: [`Centered on boundary between ${resolvedZones[i].id} and ${resolvedZones[i + 1].id}`],
       profileVector: rectProfile("XY", CPT, W - CPT, 0, D - CPT)
     };
-    features.push(...applyHorizontalJoinery(mid, CPT));
-    pushBoard(boards, mid);
+    joinery.push(...applyHorizontalJoinery(asSmallBoard(mid), CPT));
+    boards.push(mid);
   }
   const sideL = boards.find((b) => b.id === "SIDE_L");
   const sideR = boards.find((b) => b.id === "SIDE_R");
-  if (sideL) attachSideGrooveProfileFeatures(sideL, features);
-  if (sideR) attachSideGrooveProfileFeatures(sideR, features);
+  if (sideL) attachSideGrooveProfileFeatures(asSmallBoard(sideL), joinery);
+  if (sideR) attachSideGrooveProfileFeatures(asSmallBoard(sideR), joinery);
   for (let i = 0; i < resolvedZones.length; i += 1) {
     const zone = resolvedZones[i];
+    if (zone.type === "open") continue;
     const bounds = computeFrontPanelBounds({
       cabinetWidth: W,
       cabinetHeight: H,
@@ -646,6 +690,24 @@ function generateSmallCabinet(params) {
       errors.push(`Zone ${zone.id}: front panel degenerates after clearance.`);
       continue;
     }
+    const note = `clearance ${bounds.sources.z0}/${bounds.sources.z1}`;
+    if (zone.type === "double_door") {
+      const mid = round13((bounds.x0 + bounds.x1) / 2);
+      const leftX1 = round13(mid - clearance / 2);
+      const rightX0 = round13(mid + clearance / 2);
+      if (leftX1 - bounds.x0 < 1 || bounds.x1 - rightX0 < 1) {
+        errors.push(`Zone ${zone.id}: double door leaves degenerate after clearance.`);
+        continue;
+      }
+      const left = makeFront(`FP_${i + 1}L`, `Front ${i + 1} left`, "left_door", "left", zone.id, FPT, bounds.x0, leftX1, bounds.z0, bounds.z1, note);
+      const right = makeFront(`FP_${i + 1}R`, `Front ${i + 1} right`, "right_door", "right", zone.id, FPT, rightX0, bounds.x1, bounds.z0, bounds.z1, note);
+      if (zone.lockEnabled) {
+        applyLock(left, "left", zone.lockSideDistance, FPT, lockFeatures);
+        applyLock(right, "right", zone.lockSideDistance, FPT, lockFeatures);
+      }
+      boards.push(left, right);
+      continue;
+    }
     let boardType;
     let hingeSide;
     if (zone.type === "left_door") {
@@ -657,60 +719,12 @@ function generateSmallCabinet(params) {
     } else {
       boardType = "drawer_front";
     }
-    const front = {
-      id: `FP_${i + 1}`,
-      name: `Front ${i + 1} (${zone.type})`,
-      category: "front_panel",
-      boardType,
-      materialThickness: FPT,
-      profilePlane: "XZ",
-      thicknessAxis: "Y",
-      x0: bounds.x0,
-      x1: bounds.x1,
-      y0: -FPT,
-      y1: 0,
-      z0: bounds.z0,
-      z1: bounds.z1,
-      hingeSide,
-      zoneId: zone.id,
-      notes: [`clearance ${bounds.sources.z0}/${bounds.sources.z1}`],
-      profileVector: rectProfile("XZ", bounds.x0, bounds.x1, bounds.z0, bounds.z1)
-    };
-    if (zone.lockEnabled && hingeSide) {
-      const handleIsRight = hingeSide === "left";
-      const inset = zone.lockSideDistance;
-      let centerX = handleIsRight ? front.x1 - inset : front.x0 + inset;
-      let centerZ = front.z1 - inset;
-      const halfW = LOCK_SLOT_WIDTH / 2;
-      const halfH = LOCK_SLOT_LENGTH / 2;
-      centerX = Math.max(front.x0 + halfW, Math.min(front.x1 - halfW, centerX));
-      centerZ = Math.max(front.z0 + halfH, Math.min(front.z1 - halfH, centerZ));
-      front.lockCutout = lockCutoutFromCenter(centerX, centerZ);
-      front.thickness = FPT;
-      features.push({
-        id: `${front.id}_door_lock`,
-        type: "door_lock",
-        targetBoardId: front.id,
-        x0: front.lockCutout.x0,
-        x1: front.lockCutout.x1,
-        z0: front.lockCutout.z0,
-        z1: front.lockCutout.z1,
-        source: "door_lock"
-      });
-      front.profileFeatures = [
-        {
-          id: `${front.id}_door_lock`,
-          type: "door_lock",
-          thickness: FPT,
-          ...front.lockCutout
-        }
-      ];
-    }
-    pushBoard(boards, front);
+    const front = makeFront(`FP_${i + 1}`, `Front ${i + 1} (${zone.type})`, boardType, hingeSide, zone.id, FPT, bounds.x0, bounds.x1, bounds.z0, bounds.z1, note);
+    if (zone.lockEnabled && hingeSide) applyLock(front, hingeSide, zone.lockSideDistance, FPT, lockFeatures);
+    boards.push(front);
   }
   if (errors.length > 0) {
     return emptyParamsResult(
-      params,
       W,
       D,
       H,
@@ -727,6 +741,7 @@ function generateSmallCabinet(params) {
       warnings
     );
   }
+  const features = [...joinery, ...lockFeatures];
   return {
     params: {
       cabinetWidth: W,
@@ -749,28 +764,10 @@ function generateSmallCabinet(params) {
     debug: {
       interiorHeight: interiorH,
       zoneHeightSum,
-      boardCounts: {
-        sides: 2,
-        back: 1,
-        top: 1,
-        bottom: 1,
-        middles: Math.max(0, resolvedZones.length - 1),
-        fronts: resolvedZones.length,
-        total: boards.length
-      },
-      featureCounts: {
-        shelfTongues: features.filter((f) => f.type === "shelf_tongue").length,
-        backTongues: features.filter((f) => f.type === "back_tongue").length,
-        sideGrooves: features.filter((f) => f.type === "side_groove").length,
-        doorLocks: features.filter((f) => f.type === "door_lock").length
-      },
-      frontFaceAllowance: FPT,
+      boardFrame: "final",
       spec: {
         form: "simple_floor_box",
-        rearJoin: "tongue_height_1_3",
-        middleAnchor: "center_on_boundary",
-        shelfJoinery: "tongue_depth_1_3_through_groove_plus5_plus0_5",
-        zoneTypes: ["left_door", "right_door", "drawer"]
+        zoneTypes: ["left_door", "right_door", "double_door", "drawer", "open"]
       }
     }
   };
@@ -778,9 +775,7 @@ function generateSmallCabinet(params) {
 export {
   GROOVE_LENGTH_OVERSIZE,
   GROOVE_THICKNESS_OVERSIZE,
-  GROOVE_Y_OVERSIZE,
-  GROOVE_Z_OVERSIZE,
   computeFrontPanelBounds,
-  generateSmallCabinet,
+  generateTallCabinet,
   shelfTongueYRange
 };

@@ -86,6 +86,33 @@ ipcMain.handle("log:open", () => {
   ensureLogDir();
   return shell.openPath(LOG_DIR);
 });
+ipcMain.handle("log:capture", (_event, payload) => {
+  ensureLogDir();
+  const stamp = String((payload && payload.stamp) || new Date().toISOString().replace(/[:.]/g, "-"))
+    .replace(/[^0-9A-Za-z._-]/g, "")
+    .slice(0, 40) || "capture";
+  const subParts = String((payload && payload.subdir) || "")
+    .split("/")
+    .filter((p) => /^[A-Za-z0-9_-]+$/.test(p))
+    .slice(0, 4);
+  const dir = subParts.length ? path.join(LOG_DIR, ...subParts) : path.join(LOG_DIR, `view-${stamp}`);
+  const writeLatest = payload && payload.latest === false ? false : true;
+  const latestDir = path.join(LOG_DIR, "latest-view");
+  fs.mkdirSync(dir, { recursive: true });
+  if (writeLatest) fs.mkdirSync(latestDir, { recursive: true });
+  const files = {};
+  const images = (payload && payload.images) || {};
+  for (const [name, b64] of Object.entries(images)) {
+    if (!/^[a-z0-9]+$/i.test(name)) continue;
+    const buf = Buffer.from(String(b64 || ""), "base64");
+    if (buf.length < 32) continue;
+    const png = `${name}.png`;
+    fs.writeFileSync(path.join(dir, png), buf);
+    if (writeLatest) fs.writeFileSync(path.join(latestDir, png), buf);
+    files[name] = png;
+  }
+  return { ok: Object.keys(files).length > 0, dir, latestDir: writeLatest ? latestDir : null, files };
+});
 
 ipcMain.handle("job:open", async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
