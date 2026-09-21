@@ -18,7 +18,7 @@ import * as job from "./job.js";
 import { getModule, BEDROOM_LAYOUT_LABEL as LAYOUT_LABEL } from "./modules.js";
 import { getPreset } from "./presets.js";
 import {
-  pickables, groupFor, envelopeBox, envelopeFootprint, poseFits, setHandleHover, faceUnderHit, disarmHandle,
+  pickables, groupFor, envelopeBox, envelopeFootprint, cabinetFootprints, poseFits, setHandleHover, faceUnderHit, disarmHandle,
   showGhost, hideGhost, showNoseGhost, showWidthRect, hideWidthRect, showCPlanePreview, hideCPlanePreview, showSnapMarker, hideSnapMarker, showInference, hideInference, showAlignLines, hideAlignLines,
   showFaceHint, hideFaceHint, flashFaceHint,
 } from "./cabinets3d.js";
@@ -1386,10 +1386,13 @@ function clampPoseToSpace(cab, pose0) {
 
 /** Ids of the cabinets and partition walls a cabinet at `pose` would overlap. */
 export function overlaps(cab, pose) {
-  const a = envelopeFootprint(cab, pose);
+  const fps = cabinetFootprints(cab, pose);
   return solidBoxes().filter((b) => {
-    if (b.id === cab.id) return false;
-    return a.minX < b.x[1] - 0.5 && a.maxX > b.x[0] + 0.5 && a.minY < b.y[1] - 0.5 && a.maxY > b.y[0] + 0.5 && a.z0 < b.z[1] - 0.5 && a.z1 > b.z[0] + 0.5;
+    if (b.id === cab.id || b.cabId === cab.id) return false;
+    return fps.some((a) =>
+      a.minX < b.x[1] - 0.5 && a.maxX > b.x[0] + 0.5
+      && a.minY < b.y[1] - 0.5 && a.maxY > b.y[0] + 0.5
+      && a.z0 < b.z[1] - 0.5 && a.z1 > b.z[0] + 0.5);
   }).map((b) => b.id);
 }
 /** Only the partition walls a cabinet at `pose` would overlap (walls come first; a cabinet never enters one). */

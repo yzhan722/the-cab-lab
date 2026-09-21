@@ -56,32 +56,70 @@ export function envelopeBox(cab, result) {
   return { x0: 0, x1: env.W, y0: -fpt, y1: env.D, z0: 0, z1: env.H, W: env.W, D: env.D, H: env.H, fpt };
 }
 
-/** World-space footprint corners and XY bounds of the cabinet envelope for a pose. */
-export function envelopeFootprint(cab, pose) {
-  const env = envelopeBox(cab, resultFor(cab.id));
+function transformBox(box, pose) {
   const a = ((pose.rotZ || 0) * Math.PI) / 180;
   const c = Math.cos(a);
   const s = Math.sin(a);
-  const corners = [[env.x0, env.y0], [env.x1, env.y0], [env.x1, env.y1], [env.x0, env.y1]].map(([lx, ly]) => [
+  const corners = [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]].map(([lx, ly]) => [
     pose.x + lx * c - ly * s,
     pose.y + lx * s + ly * c,
   ]);
   const xs = corners.map((p) => p[0]);
   const ys = corners.map((p) => p[1]);
+  const z0 = (box.z0 ?? 0) + pose.z;
+  const z1 = (box.z1 ?? 0) + pose.z;
   return {
+    id: box.id,
     corners,
     minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys),
-    z0: pose.z + env.z0, z1: pose.z + env.z1,
+    z0, z1,
+  };
+}
+
+/** Local XY rectangles the cabinet occupies (L/U/Parallel lounge = several). */
+export function localFootprintBoxes(cab) {
+  const result = resultFor(cab.id);
+  const mod = getModule(cab.moduleId);
+  if (typeof mod.footprintBoxes === "function") {
+    const boxes = mod.footprintBoxes(cab.params, result) || [];
+    if (boxes.length) {
+      const env = envelopeBox(cab, result);
+      return boxes.map((b) => ({ ...b, z0: b.z0 ?? env.z0, z1: b.z1 ?? env.z1 }));
+    }
+  }
+  const env = envelopeBox(cab, result);
+  return [{ id: "envelope", x0: env.x0, x1: env.x1, y0: env.y0, y1: env.y1, z0: env.z0, z1: env.z1 }];
+}
+
+/** One world footprint per local rectangle (walls can sit in an L notch). */
+export function cabinetFootprints(cab, pose) {
+  return localFootprintBoxes(cab).map((box) => transformBox(box, pose));
+}
+
+/** World-space union AABB of the cabinet envelope (or all footprint boxes). */
+export function envelopeFootprint(cab, pose) {
+  const fps = cabinetFootprints(cab, pose);
+  const minX = Math.min(...fps.map((f) => f.minX));
+  const maxX = Math.max(...fps.map((f) => f.maxX));
+  const minY = Math.min(...fps.map((f) => f.minY));
+  const maxY = Math.max(...fps.map((f) => f.maxY));
+  const z0 = Math.min(...fps.map((f) => f.z0));
+  const z1 = Math.max(...fps.map((f) => f.z1));
+  return {
+    corners: [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]],
+    minX, maxX, minY, maxY, z0, z1,
   };
 }
 
 /** Does the cabinet fit inside the space at this pose (floor polygon, obstacles, height)? */
 export function poseFits(cab, pose) {
-  const fp = envelopeFootprint(cab, pose);
+  const fps = cabinetFootprints(cab, pose);
   const sp = getSpace();
-  // A roof-aware module (the bedroom) is cut to the roof by its generator; only the floor and obstacles apply.
-  const z1 = getModule(cab.moduleId).roofAware && sp ? Math.min(fp.z1, minClearHeight(sp, fp.minY, fp.maxY)) : fp.z1;
-  return footprintFits(sp, fp.corners, [fp.z0, z1]);
+  const roofAware = getModule(cab.moduleId).roofAware;
+  return fps.every((fp) => {
+    const z1 = roofAware && sp ? Math.min(fp.z1, minClearHeight(sp, fp.minY, fp.maxY)) : fp.z1;
+    return footprintFits(sp, fp.corners, [fp.z0, z1]);
+  });
 }
 
 /** Closed local YZ outline of a nose slab: floor, then the roof profile back toward the room face. */

@@ -17,6 +17,9 @@ const ENTRIES = [
   { name: "bedroom", entry: path.join(MODULES_DIR, "bedroom", "generator.ts") },
   { name: "bedBox", entry: path.join(MODULES_DIR, "bedBox", "generator.ts") },
   { name: "overheadCabinet", entry: path.join(MODULES_DIR, "overheadCabinet", "generator.ts") },
+  { name: "kitchen", entry: path.join(MODULES_DIR, "kitchen", "generator.ts") },
+  { name: "generalTall", entry: path.join(MODULES_DIR, "generalTall", "generator.ts") },
+  { name: "lounge", entry: path.join(MODULES_DIR, "lounge", "generator.ts") },
   // Shared helpers the bench needs in the browser (pins are read/written there).
   { name: "pins", entry: path.join(MODULES_DIR, "_lib", "pins.ts") },
 ];

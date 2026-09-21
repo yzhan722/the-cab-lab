@@ -1,0 +1,520 @@
+{
+  "module": "lounge",
+  "presets": [
+    {
+      "id": "golden-l",
+      "label": "L · 2000×800×420 · RIGHT（黄金）",
+      "params": {
+        "style": "L_SHAPE",
+        "height": 420,
+        "partitionPanelThickness": 18,
+        "mainWidth": 2000,
+        "mainDepth": 600,
+        "lWidth": 1600,
+        "lDepth": 800,
+        "lPosition": "RIGHT",
+        "topLidEnabled": true
+      },
+      "pins": {
+        "boards": {
+          "main_front": {
+            "x0": 0,
+            "x1": 400,
+            "y0": 0,
+            "y1": 18,
+            "z0": 0,
+            "z1": 402
+          },
+          "main_top": {
+            "x0": 0,
+            "x1": 400,
+            "y0": 0,
+            "y1": 600,
+            "z0": 402,
+            "z1": 420
+          },
+          "main_lid": {
+            "x0": 101.5,
+            "x1": 298.5,
+            "y0": 151.5,
+            "y1": 448.5,
+            "z0": 402,
+            "z1": 420
+          },
+          "main_left_l_piece": {
+            "x0": 0,
+            "x1": 18,
+            "y0": 18,
+            "y1": 600,
+            "z0": 0,
+            "z1": 402
+          },
+          "main_right_l_piece": {
+            "x0": 382,
+            "x1": 400,
+            "y0": 18,
+            "y1": 600,
+            "z0": 0,
+            "z1": 402
+          },
+          "l_front": {
+            "x0": 418,
+            "x1": 2000,
+            "y0": 0,
+            "y1": 18,
+            "z0": 0,
+            "z1": 402
+          },
+          "l_side": {
+            "x0": 400,
+            "x1": 418,
+            "y0": 0,
+            "y1": 800,
+            "z0": 0,
+            "z1": 402
+          },
+          "l_side_strip": {
+            "x0": 1982,
+            "x1": 2000,
+            "y0": 18,
+            "y1": 800,
+            "z0": 302,
+            "z1": 402
+          },
+          "l_top": {
+            "x0": 400,
+            "x1": 2000,
+            "y0": 0,
+            "y1": 800,
+            "z0": 402,
+            "z1": 420
+          },
+          "l_lid": {
+            "x0": 801.5,
+            "x1": 1598.5,
+            "y0": 201.5,
+            "y1": 598.5,
+            "z0": 402,
+            "z1": 420
+          }
+        },
+        "points": {
+          "main_left_l_piece.pv": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              402
+            ],
+            [
+              582,
+              402
+            ],
+            [
+              582,
+              302
+            ],
+            [
+              100,
+              302
+            ],
+            [
+              100,
+              0
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "main_right_l_piece.pv": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              402
+            ],
+            [
+              582,
+              402
+            ],
+            [
+              582,
+              302
+            ],
+            [
+              100,
+              302
+            ],
+            [
+              100,
+              0
+            ],
+            [
+              0,
+              0
+            ]
+          ]
+        },
+        "features": {},
+        "faceFeatures": {
+          "main_top.A.main_opening": {
+            "u0": 100,
+            "u1": 300,
+            "v0": 150,
+            "v1": 450
+          },
+          "main_lid.A.main_lid_finger": {
+            "diameter": 40,
+            "cx": 98.5,
+            "cy": 148.5
+          },
+          "l_top.A.l_opening": {
+            "u0": 400,
+            "u1": 1200,
+            "v0": 200,
+            "v1": 600
+          },
+          "l_lid.A.l_lid_finger": {
+            "diameter": 40,
+            "cx": 398.5,
+            "cy": 198.5
+          }
+        }
+      }
+    },
+    {
+      "id": "golden-i",
+      "label": "I · 2000×600×420",
+      "params": {
+        "style": "I_SHAPE",
+        "height": 420,
+        "partitionPanelThickness": 18,
+        "mainWidth": 2000,
+        "mainDepth": 600,
+        "topLidEnabled": true
+      },
+      "pins": {
+        "boards": {
+          "i_front": {
+            "x0": 0,
+            "x1": 2000,
+            "y0": 0,
+            "y1": 18,
+            "z0": 0,
+            "z1": 402
+          },
+          "i_left_side": {
+            "x0": 0,
+            "x1": 18,
+            "y0": 18,
+            "y1": 600,
+            "z0": 0,
+            "z1": 402
+          },
+          "i_right_side": {
+            "x0": 1982,
+            "x1": 2000,
+            "y0": 18,
+            "y1": 600,
+            "z0": 0,
+            "z1": 402
+          },
+          "i_top": {
+            "x0": 0,
+            "x1": 2000,
+            "y0": 0,
+            "y1": 600,
+            "z0": 402,
+            "z1": 420
+          },
+          "i_lid": {
+            "x0": 501.5,
+            "x1": 1498.5,
+            "y0": 151.5,
+            "y1": 448.5,
+            "z0": 402,
+            "z1": 420
+          }
+        },
+        "points": {},
+        "features": {},
+        "faceFeatures": {
+          "i_top.A.i_opening": {
+            "u0": 500,
+            "u1": 1500,
+            "v0": 150,
+            "v1": 450
+          },
+          "i_lid.A.i_lid_finger": {
+            "diameter": 40,
+            "cx": 498.5,
+            "cy": 148.5
+          }
+        }
+      }
+    },
+    {
+      "id": "golden-u",
+      "label": "U · 2000×1600×420",
+      "params": {
+        "style": "U_SHAPE",
+        "height": 420,
+        "partitionPanelThickness": 18,
+        "mainWidth": 2000,
+        "mainDepth": 1600,
+        "lDepth": 600,
+        "topLidEnabled": false
+      },
+      "pins": {
+        "boards": {
+          "left_front": {
+            "x0": 0,
+            "x1": 600,
+            "y0": 0,
+            "y1": 18,
+            "z0": 0,
+            "z1": 402
+          },
+          "left_left_side": {
+            "x0": 0,
+            "x1": 18,
+            "y0": 18,
+            "y1": 1600,
+            "z0": 0,
+            "z1": 402
+          },
+          "left_right_side": {
+            "x0": 582,
+            "x1": 600,
+            "y0": 18,
+            "y1": 1600,
+            "z0": 0,
+            "z1": 402
+          },
+          "left_top": {
+            "x0": 0,
+            "x1": 600,
+            "y0": 0,
+            "y1": 1600,
+            "z0": 402,
+            "z1": 420
+          },
+          "back_front": {
+            "x0": 0,
+            "x1": 2000,
+            "y0": 0,
+            "y1": 18,
+            "z0": 0,
+            "z1": 402
+          },
+          "back_left_side": {
+            "x0": 0,
+            "x1": 18,
+            "y0": 18,
+            "y1": 600,
+            "z0": 0,
+            "z1": 402
+          },
+          "back_right_side": {
+            "x0": 1982,
+            "x1": 2000,
+            "y0": 18,
+            "y1": 600,
+            "z0": 0,
+            "z1": 402
+          },
+          "back_top": {
+            "x0": 0,
+            "x1": 2000,
+            "y0": 0,
+            "y1": 600,
+            "z0": 402,
+            "z1": 420
+          },
+          "right_front": {
+            "x0": 1400,
+            "x1": 2000,
+            "y0": 0,
+            "y1": 18,
+            "z0": 0,
+            "z1": 402
+          },
+          "right_left_side": {
+            "x0": 1400,
+            "x1": 1418,
+            "y0": 18,
+            "y1": 1600,
+            "z0": 0,
+            "z1": 402
+          },
+          "right_right_side": {
+            "x0": 1982,
+            "x1": 2000,
+            "y0": 18,
+            "y1": 1600,
+            "z0": 0,
+            "z1": 402
+          },
+          "right_top": {
+            "x0": 1400,
+            "x1": 2000,
+            "y0": 0,
+            "y1": 1600,
+            "z0": 402,
+            "z1": 420
+          }
+        },
+        "points": {},
+        "features": {},
+        "faceFeatures": {
+          "left_top.A.left_opening": {
+            "u0": 150,
+            "u1": 450,
+            "v0": 400,
+            "v1": 1200
+          },
+          "back_top.A.back_opening": {
+            "u0": 500,
+            "u1": 1500,
+            "v0": 150,
+            "v1": 450
+          },
+          "right_top.A.right_opening": {
+            "u0": 150,
+            "u1": 450,
+            "v0": 400,
+            "v1": 1200
+          }
+        }
+      }
+    },
+    {
+      "id": "golden-parallel",
+      "label": "Parallel · 4000×800×420",
+      "params": {
+        "style": "PARALLEL",
+        "height": 420,
+        "partitionPanelThickness": 18,
+        "totalWidth": 4000,
+        "singleLoungeWidth": 1500,
+        "depth": 800,
+        "topLidEnabled": true
+      },
+      "pins": {
+        "boards": {
+          "left_front": {
+            "x0": 0,
+            "x1": 1482,
+            "y0": 0,
+            "y1": 18,
+            "z0": 0,
+            "z1": 402
+          },
+          "left_side": {
+            "x0": 1482,
+            "x1": 1500,
+            "y0": 0,
+            "y1": 800,
+            "z0": 0,
+            "z1": 402
+          },
+          "left_top": {
+            "x0": 0,
+            "x1": 1500,
+            "y0": 0,
+            "y1": 800,
+            "z0": 402,
+            "z1": 420
+          },
+          "left_lid": {
+            "x0": 376.5,
+            "x1": 1123.5,
+            "y0": 201.5,
+            "y1": 598.5,
+            "z0": 402,
+            "z1": 420
+          },
+          "left_support_strip": {
+            "x0": 0,
+            "x1": 18,
+            "y0": 18,
+            "y1": 800,
+            "z0": 302,
+            "z1": 402
+          },
+          "right_front": {
+            "x0": 2518,
+            "x1": 4000,
+            "y0": 0,
+            "y1": 18,
+            "z0": 0,
+            "z1": 402
+          },
+          "right_side": {
+            "x0": 2500,
+            "x1": 2518,
+            "y0": 0,
+            "y1": 800,
+            "z0": 0,
+            "z1": 402
+          },
+          "right_top": {
+            "x0": 2500,
+            "x1": 4000,
+            "y0": 0,
+            "y1": 800,
+            "z0": 402,
+            "z1": 420
+          },
+          "right_lid": {
+            "x0": 2876.5,
+            "x1": 3623.5,
+            "y0": 201.5,
+            "y1": 598.5,
+            "z0": 402,
+            "z1": 420
+          },
+          "right_support_strip": {
+            "x0": 3982,
+            "x1": 4000,
+            "y0": 18,
+            "y1": 800,
+            "z0": 302,
+            "z1": 402
+          }
+        },
+        "points": {},
+        "features": {},
+        "faceFeatures": {
+          "left_top.A.left_opening": {
+            "u0": 375,
+            "u1": 1125,
+            "v0": 200,
+            "v1": 600
+          },
+          "left_lid.A.left_lid_finger": {
+            "diameter": 40,
+            "cx": 373.5,
+            "cy": 198.5
+          },
+          "right_top.A.right_opening": {
+            "u0": 375,
+            "u1": 1125,
+            "v0": 200,
+            "v1": 600
+          },
+          "right_lid.A.right_lid_finger": {
+            "diameter": 40,
+            "cx": 373.5,
+            "cy": 198.5
+          }
+        }
+      }
+    }
+  ]
+}
