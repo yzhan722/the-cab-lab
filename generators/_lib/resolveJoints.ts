@@ -74,7 +74,11 @@ export function resolveDeclaredJoints(boards: Board[], declarations: JointDeclar
     const faceContact = d.relationshipType === "face_contact";
     const kind = faceContact ? "face_contact" : "butt";
     if (!c) {
-      out.push(joint(d.declarationId, kind, faceRef(host.id, []), faceRef(target.id, []), {
+      // Overlapping face_contact still names the host's big faces so explode
+      // can pull along that thickness axis instead of guessing AABB.
+      const hostFaces: FaceId[] = faceContact ? ["A"] : [];
+      const targetFaces: FaceId[] = [];
+      out.push(joint(d.declarationId, kind, faceRef(host.id, hostFaces), faceRef(target.id, targetFaces), {
         hardware: d.allowedHardware, rule: d.ruleId,
       }));
       continue;

@@ -17,7 +17,7 @@ export function buildKitchenFaces(fb: {
   const B = new Map(fb.boards.map((b) => [b.id, b]));
   for (const b of fb.boards) {
     b.role = b.category;
-    const isFront = b.category === "front" || b.boardType === "front_panel" || b.id === "B1";
+    const isFront = b.category === "front_panel" || b.boardType === "front_panel" || b.id === "B1";
     if (isFront) {
       annotate(b, "B", { semantic: "front", visible: true });
       annotate(b, "A", { semantic: "back", visible: false });

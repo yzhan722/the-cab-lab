@@ -272,7 +272,9 @@ function resolveDeclaredJoints(boards, declarations) {
     const faceContact = d.relationshipType === "face_contact";
     const kind = faceContact ? "face_contact" : "butt";
     if (!c) {
-      out.push(joint(d.declarationId, kind, faceRef(host.id, []), faceRef(target.id, []), {
+      const hostFaces2 = faceContact ? ["A"] : [];
+      const targetFaces2 = [];
+      out.push(joint(d.declarationId, kind, faceRef(host.id, hostFaces2), faceRef(target.id, targetFaces2), {
         hardware: d.allowedHardware,
         rule: d.ruleId
       }));
@@ -290,10 +292,38 @@ function resolveDeclaredJoints(boards, declarations) {
 }
 
 // generators/lounge/relationshipDeclarations.ts
+var P = (declarationId, a, b) => ({
+  declarationId,
+  generator: "lounge",
+  panelAId: a,
+  panelBId: b,
+  hostPanelId: a,
+  targetPanelId: b
+});
 var LOUNGE_RELATIONSHIP_DECLARATIONS = [
-  { declarationId: "lg_main_front_to_top", generator: "lounge", panelAId: "main_front", panelBId: "main_top", hostPanelId: "main_front", targetPanelId: "main_top" },
-  { declarationId: "lg_l_front_to_side", generator: "lounge", panelAId: "l_front", panelBId: "l_side", hostPanelId: "l_front", targetPanelId: "l_side" },
-  { declarationId: "lg_l_front_to_top", generator: "lounge", panelAId: "l_front", panelBId: "l_top", hostPanelId: "l_front", targetPanelId: "l_top" }
+  P("lg_main_front_to_top", "main_front", "main_top"),
+  P("lg_l_front_to_side", "l_front", "l_side"),
+  P("lg_l_front_to_top", "l_front", "l_top"),
+  P("lg_main_left_to_top", "main_left_l_piece", "main_top"),
+  P("lg_main_right_to_top", "main_right_l_piece", "main_top"),
+  P("lg_l_side_to_top", "l_side", "l_top"),
+  P("lg_l_strip_to_top", "l_side_strip", "l_top"),
+  P("lg_i_front_to_top", "i_front", "i_top"),
+  P("lg_i_left_to_top", "i_left_side", "i_top"),
+  P("lg_i_right_to_top", "i_right_side", "i_top"),
+  P("lg_left_front_to_top", "left_front", "left_top"),
+  P("lg_left_left_to_top", "left_left_side", "left_top"),
+  P("lg_left_right_to_top", "left_right_side", "left_top"),
+  P("lg_left_side_to_top", "left_side", "left_top"),
+  P("lg_left_strip_to_top", "left_support_strip", "left_top"),
+  P("lg_back_front_to_top", "back_front", "back_top"),
+  P("lg_back_left_to_top", "back_left_side", "back_top"),
+  P("lg_back_right_to_top", "back_right_side", "back_top"),
+  P("lg_right_front_to_top", "right_front", "right_top"),
+  P("lg_right_left_to_top", "right_left_side", "right_top"),
+  P("lg_right_right_to_top", "right_right_side", "right_top"),
+  P("lg_right_side_to_top", "right_side", "right_top"),
+  P("lg_right_strip_to_top", "right_support_strip", "right_top")
 ];
 function relationshipDeclarationsForBoards(ids) {
   return LOUNGE_RELATIONSHIP_DECLARATIONS.filter((d) => ids.has(d.panelAId) && ids.has(d.panelBId));
@@ -304,7 +334,7 @@ function buildLoungeFaces(fb) {
   const B = new Map(fb.boards.map((b) => [b.id, b]));
   for (const b of fb.boards) {
     b.role = b.category;
-    if (b.boardType === "front") {
+    if (b.boardType === "front" || b.category === "front_panel") {
       annotate(b, "B", { semantic: "front", visible: true });
       annotate(b, "A", { semantic: "back", visible: false });
     }
@@ -318,12 +348,13 @@ function buildLoungeFaces(fb) {
     const top = B.get(topId);
     if (!top) continue;
     const r = localRect(top, { x: [op.x0, op.x0 + op.width], y: [op.y0, op.y0 + op.depth] });
+    const lidId = `${topId.replace(/_top$/, "")}_lid`;
     addFeature(top, "A", {
       id: op.id,
       kind: "cutout",
       ...r,
       through: true,
-      for: `${topId.replace(/_top$/, "")}_lid`,
+      ...B.has(lidId) ? { for: lidId } : {},
       source: "lounge"
     });
   }
@@ -617,7 +648,7 @@ function mkBoard(id, name, boardType, thickness, plane, axis, x0, x1, y0, y1, z0
   return {
     id,
     name,
-    category: boardType,
+    category: boardType === "front" || boardType === "cabinet_door" ? "front_panel" : boardType,
     boardType,
     materialThickness: thickness,
     profilePlane: plane,
@@ -973,8 +1004,8 @@ function generateLounge(raw) {
   const style = raw.style ?? "L_SHAPE";
   const H = asNum2(raw.height, RULES.DEFAULT_HEIGHT.value);
   const ppt = Math.max(1, asNum2(raw.partitionPanelThickness, RULES.DEFAULT_PPT.value));
-  const P = param({ H, ppt });
-  const Hprime = dim("lounge.panelHeight", { H: P.H, ppt: P.ppt }, (t) => t.H - t.ppt);
+  const P2 = param({ H, ppt });
+  const Hprime = dim("lounge.panelHeight", { H: P2.H, ppt: P2.ppt }, (t) => t.H - t.ppt);
   const lidOn = raw.topLidEnabled !== false;
   const boards = [];
   const openings = [];

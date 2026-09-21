@@ -18,7 +18,7 @@ export function buildLoungeFaces(fb: {
   const B = new Map(fb.boards.map((b) => [b.id, b]));
   for (const b of fb.boards) {
     b.role = b.category;
-    if (b.boardType === "front") {
+    if (b.boardType === "front" || b.category === "front_panel") {
       annotate(b, "B", { semantic: "front", visible: true });
       annotate(b, "A", { semantic: "back", visible: false });
     }
@@ -33,8 +33,11 @@ export function buildLoungeFaces(fb: {
     const top = B.get(topId);
     if (!top) continue;
     const r = localRect(top, { x: [op.x0, op.x0 + op.width], y: [op.y0, op.y0 + op.depth] });
+    const lidId = `${topId.replace(/_top$/, "")}_lid`;
     addFeature(top, "A", {
-      id: op.id, kind: "cutout", ...r, through: true, for: `${topId.replace(/_top$/, "")}_lid`, source: "lounge",
+      id: op.id, kind: "cutout", ...r, through: true,
+      ...(B.has(lidId) ? { for: lidId } : {}),
+      source: "lounge",
     });
   }
 

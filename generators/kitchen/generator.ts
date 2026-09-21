@@ -873,7 +873,7 @@ export function generateKitchenCabinet(input: KitchenParams): KitchenResult {
       warnings.push(`Front panel ${id}: non-positive leaf size; skipped.`);
       return;
     }
-    boards.push(mkBoard(id, "Front Panel", "front", "front_panel", FPT, "door",
+    boards.push(mkBoard(id, "Front Panel", "front_panel", "front_panel", FPT, "door",
       "XZ", "Y", x0, x1, -FPT, 0, z0, z1, rectXZ(w, h)));
     const hs = zone.hingeSettings;
     if (kind !== "drawer") {

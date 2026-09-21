@@ -746,7 +746,7 @@ export function generateGeneralTall(input: GTParams): GTResult {
     }
   }
   for (const fp of frontPanels) {
-    boards.push(mkBoard(fp.id, "Front Panel", "front", "front_panel", FPT, "door",
+    boards.push(mkBoard(fp.id, "Front Panel", "front_panel", "front_panel", FPT, "door",
       "XZ", "Y", fp.x0, fp.x1, -FPT, 0, fp.z0, fp.z1, undefined));
     const hs = { ...fp.zone.zone.hingeSettings };
     const cupD = asNum(hs.cupDiameter, R.HINGE_CUP_DIAMETER.value);

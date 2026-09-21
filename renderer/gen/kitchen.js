@@ -276,7 +276,9 @@ function resolveDeclaredJoints(boards, declarations) {
     const faceContact = d.relationshipType === "face_contact";
     const kind = faceContact ? "face_contact" : "butt";
     if (!c) {
-      out.push(joint(d.declarationId, kind, faceRef(host.id, []), faceRef(target.id, []), {
+      const hostFaces2 = faceContact ? ["A"] : [];
+      const targetFaces2 = [];
+      out.push(joint(d.declarationId, kind, faceRef(host.id, hostFaces2), faceRef(target.id, targetFaces2), {
         hardware: d.allowedHardware,
         rule: d.ruleId
       }));
@@ -294,36 +296,40 @@ function resolveDeclaredJoints(boards, declarations) {
 }
 
 // generators/kitchen/relationshipDeclarations.ts
-var KITCHEN_RELATIONSHIP_DECLARATIONS = [
-  {
-    declarationId: "kt_b1_b3_bottom_rail_to_deck",
-    generator: "kitchen",
-    panelAId: "B1",
-    panelBId: "B3",
-    relationshipType: "structural_butt_joint",
-    geometryType: "edge_to_surface",
-    hostPanelId: "B1",
-    targetPanelId: "B3",
-    ruleId: "kt_b1_b3_bottom_rail_to_deck_v1",
-    allowedHardware: ["screw_hole"]
-  },
-  {
-    declarationId: "kt_b2_b3_carcass_rail_to_deck",
-    generator: "kitchen",
-    panelAId: "B2",
-    panelBId: "B3",
-    relationshipType: "structural_butt_joint",
-    geometryType: "edge_to_surface",
-    hostPanelId: "B2",
-    targetPanelId: "B3",
-    ruleId: "kt_b2_b3_carcass_rail_to_deck_v1",
-    allowedHardware: ["screw_hole"]
-  }
+var D = (declarationId, host, target) => ({
+  declarationId,
+  generator: "kitchen",
+  panelAId: host,
+  panelBId: target,
+  relationshipType: "structural_butt_joint",
+  geometryType: "edge_to_surface",
+  hostPanelId: host,
+  targetPanelId: target,
+  ruleId: `${declarationId}_v1`,
+  allowedHardware: ["screw_hole"]
+});
+var STATIC = [
+  D("kt_b1_b3_bottom_rail_to_deck", "B1", "B3"),
+  D("kt_b2_b3_carcass_rail_to_deck", "B2", "B3"),
+  D("kt_b1_b2_front_to_carcass_rail", "B1", "B2")
 ];
+function present(d, ids) {
+  return [d.panelAId, d.panelBId, d.hostPanelId, d.targetPanelId].every((id) => ids.has(id));
+}
 function relationshipDeclarationsForBoards(boardIds) {
-  return KITCHEN_RELATIONSHIP_DECLARATIONS.filter(
-    (d) => [d.panelAId, d.panelBId, d.hostPanelId, d.targetPanelId].every((id) => boardIds.has(id))
-  );
+  const vs = [...boardIds].filter((id) => /^V\d+$/.test(id)).sort((a, b) => a.localeCompare(b, void 0, { numeric: true }));
+  const extra = [];
+  if (boardIds.has("B3")) {
+    for (const v of vs) extra.push(D(`kt_${v.toLowerCase()}_b3`, v, "B3"));
+    const funcs = [...boardIds].filter((id) => /door-shelf$/.test(id) || /-(bottom)$/.test(id));
+    for (const id of funcs) extra.push(D(`kt_b3_${id.replace(/-/g, "_")}`, "B3", id));
+  }
+  const rails = [...boardIds].filter((id) => /^(T[123]|B4)(-\d+)?$/.test(id));
+  const endVs = vs.length ? [vs[0], vs[vs.length - 1]].filter((v, i, a) => a.indexOf(v) === i) : [];
+  for (const rail of rails) {
+    for (const v of endVs) extra.push(D(`kt_${rail.replace(/-/g, "_")}_${v.toLowerCase()}`, rail, v));
+  }
+  return [...STATIC, ...extra].filter((d) => present(d, boardIds));
 }
 
 // generators/kitchen/faces.ts
@@ -331,7 +337,7 @@ function buildKitchenFaces(fb) {
   const B = new Map(fb.boards.map((b) => [b.id, b]));
   for (const b of fb.boards) {
     b.role = b.category;
-    const isFront = b.category === "front" || b.boardType === "front_panel" || b.id === "B1";
+    const isFront = b.category === "front_panel" || b.boardType === "front_panel" || b.id === "B1";
     if (isFront) {
       annotate(b, "B", { semantic: "front", visible: true });
       annotate(b, "A", { semantic: "back", visible: false });
@@ -472,7 +478,7 @@ function pickSideOptions(col, side) {
 function normalize(input) {
   const gs = input.globalSettings ?? {};
   const W = asNum(gs.length, 0);
-  const D = asNum(gs.depth, 0);
+  const D2 = asNum(gs.depth, 0);
   const H = asNum(gs.height, 0);
   const CPT = asNum(input.materialThickness, 15);
   const FPT = asNum(input.frontThickness, 16);
@@ -514,7 +520,7 @@ function normalize(input) {
   }
   const s = {
     W,
-    D,
+    D: D2,
     H,
     CPT,
     FPT,
@@ -526,7 +532,7 @@ function normalize(input) {
     xBoundaries: [0, ...columns.map((c) => c.x1)],
     leftOpts: DEFAULT_SIDE,
     rightOpts: DEFAULT_SIDE,
-    cd: r2(D - FPT),
+    cd: r2(D2 - FPT),
     avoidances: (input.wheelAvoidances ?? []).map((a) => ({
       id: a.id,
       x0: Math.round(asNum(a.x0, 0)),
@@ -1447,7 +1453,7 @@ function generateKitchenCabinet(input) {
     boards.push(mkBoard(
       id,
       "Front Panel",
-      "front",
+      "front_panel",
       "front_panel",
       FPT,
       "door",

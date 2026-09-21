@@ -148,7 +148,10 @@ const UI: GTParams = {
   assert.ok(r.boards.some((x) => x.id === "T5"), "T5 always emitted at midDepth");
   assert.deepEqual(place(r, "T5"), { x0: 0, x1: 600, y0: 552, y1: 567, z0: 1900, z1: 2000 });
   assert.deepEqual(place(r, "T4"), { x0: 0, x1: 600, y0: 452, y1: 552, z0: 1984, z1: 1999 });
-  assert.equal(r.joints.length, 4); // 骨架 4 条（无侧板/V5）
+  assert.ok(r.joints.some((j) => j.id === "gt_t4_t5_rear_stack"), "T4↔T5");
+  assert.ok(r.joints.some((j) => j.id === "gt_t5_v3"), "T5↔V3");
+  assert.equal(r.boards.find((x) => x.id === "FP_zone-1")?.category, "front_panel");
+  assert.ok(["gt_b1_b3_bottom_rail_to_deck", "gt_b2_b3_carcass_rail_to_deck", "gt_t1_t3_top_rail_to_insert", "gt_t2_t3_carcass_rail_to_insert"].every((id) => r.joints.some((j) => j.id === id)));
   assert.equal(r.debug?.boardFrame, "final");
 }
 
@@ -232,8 +235,10 @@ const UI: GTParams = {
   assert.deepEqual(place(r, "V1"), { x0: 0, x1: 16, y0: 0, y1: 150, z0: 0, z1: 2100 });
   assert.deepEqual(place(r, "V2"), { x0: 684, x1: 700, y0: 0, y1: 150, z0: 0, z1: 2100 });
   assert.deepEqual(place(r, "SidePanel_L"), { x0: 0, x1: 16, y0: -16, y1: 584, z0: 0, z1: 2100 });
-  // 声明：骨架 4 + 侧板 2
-  assert.equal(r.joints.length, 6);
+  // 声明：骨架 4 + 侧板 2 + T4/T5
+  assert.ok(r.joints.some((j) => j.id === "gt_sidepanel_l_v1"));
+  assert.ok(r.joints.some((j) => j.id === "gt_t4_t5_rear_stack"));
+  assert.ok(r.joints.length >= 8);
   // 侧板白名单
   {
     const bad = generateGeneralTall({
@@ -422,6 +427,9 @@ function hasPoint(prof: { y: number; z: number }[] | undefined, y: number, z: nu
   assert.ok(hasPoint(v1s2, 105, 1984), "V1 top style_2 notch depth");
   assert.ok(hasPoint(v1s2, 105, 0), "V1 bottom style_2 notch");
   assert.ok(hasPoint(v1s2, 105, 16), "V1 bottom style_2 notch depth");
+  assert.ok(style2.joints.some((j) => j.id === "gt_th1_fixed_front"), "style_2 TH1↔fixed front");
+  assert.ok(style2.joints.some((j) => j.id === "gt_bh1_fixed_front"), "style_2 BH1↔fixed front");
+  assert.ok(style2.joints.some((j) => j.id === "gt_t4_t5_rear_stack"));
 
   const mixedBot = generateGeneralTall({
     cabinetHeight: 2000, cabinetWidth: 600, cabinetDepth: 584,

@@ -38,7 +38,10 @@ assert.deepEqual(r.footprint.l, { x0: 400, x1: 2000, y0: 0, y1: 800 });
 assert.equal(r.boards.filter((x) => x.boardType !== "lid").length, 8);
 assert.equal(r.lids.length, 2);
 assert.equal(r.openings.length, 2);
-assert.equal(r.joints.length, 3);
+assert.ok(r.joints.some((j) => j.id === "lg_main_front_to_top"));
+assert.ok(r.joints.some((j) => j.id === "lg_l_front_to_top"));
+assert.ok(r.joints.some((j) => j.id === "lg_l_side_to_top"));
+assert.equal(b("main_front").category, "front_panel");
 
 assert.deepEqual(place("main_front"), { x0: 0, x1: 400, y0: 0, y1: 18, z0: 0, z1: 402 });
 assert.deepEqual(place("l_front"), { x0: 418, x1: 2000, y0: 0, y1: 18, z0: 0, z1: 402 });
@@ -78,11 +81,22 @@ assert.equal(r.debug?.boardFrame, "final");
 const i = generateLounge({ style: "I_SHAPE", mainWidth: 2000, mainDepth: 600, height: 420 });
 assert.equal(i.boards.filter((x) => x.boardType !== "lid").length, 4);
 assert.deepEqual({ x0: i.boards.find((x) => x.id === "i_front")!.x0, y0: i.boards.find((x) => x.id === "i_front")!.y0, y1: i.boards.find((x) => x.id === "i_front")!.y1 }, { x0: 0, y0: 0, y1: 18 });
+assert.ok(i.joints.some((j) => j.id === "lg_i_front_to_top"));
+assert.equal(i.boards.find((x) => x.id === "i_front")?.category, "front_panel");
 
 const u = generateLounge({ style: "U_SHAPE", mainWidth: 2000, mainDepth: 1600, lDepth: 600, height: 420, topLidEnabled: false });
 assert.ok(u.boards.some((x) => x.id === "left_front"));
 assert.ok(u.boards.some((x) => x.id === "back_front"));
 assert.ok(u.boards.some((x) => x.id === "right_front"));
+assert.ok(u.joints.some((j) => j.id === "lg_left_front_to_top"));
+assert.ok(u.joints.some((j) => j.id === "lg_back_front_to_top"));
+const leftTop = u.boards.find((x) => x.id === "left_top")!;
+assert.ok(!leftTop.faces.flatMap((f) => f.features).some((ft) => ft.for === "left_lid"), "U without lid does not point at missing lid");
+
+const par = generateLounge({ style: "PARALLEL", totalWidth: 4000, singleLoungeWidth: 1500, depth: 800, height: 420, topLidEnabled: true });
+assert.ok(par.joints.some((j) => j.id === "lg_left_front_to_top"));
+assert.ok(par.joints.some((j) => j.id === "lg_right_front_to_top"));
+assert.equal(par.boards.find((x) => x.id === "right_front")?.category, "front_panel");
 
 /* ---------- 折线放置 + L 缺口不进包络 ---------- */
 {

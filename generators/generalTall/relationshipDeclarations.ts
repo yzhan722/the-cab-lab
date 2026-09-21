@@ -1,6 +1,5 @@
 /**
- * 设计意图接缝声明（声明式数据）。骨架 4 条 + 冰箱 4 条（与 Fusion 端一致；
- * Zi↔V 槽、H 板↔立梃、VD↔Zi/H34、DS/门板均无声明——规格坑⑥）。
+ * Tall FaceRef joints: style_1 skeleton, fridge sides, style_2 fronts, T4/T5 at the wall.
  */
 export interface RelationshipDeclaration {
   declarationId: string;
@@ -38,12 +37,34 @@ export const GT_RELATIONSHIP_DECLARATIONS: RelationshipDeclaration[] = [
   D("gt_sidepanel_r_v2", "SidePanel_R", "V2", "face_contact", "surface_to_surface", []),
   D("gt_v5_v1", "V5", "V1", "face_contact", "surface_to_surface", []),
   D("gt_v5_v2", "V5", "V2", "face_contact", "surface_to_surface", []),
+  D("gt_t4_t5_rear_stack", "T4", "T5", "structural_butt_joint", "edge_to_surface", ["screw_hole"]),
+  D("gt_t5_v3", "T5", "V3", "face_contact", "surface_to_surface", []),
+  D("gt_t5_v4", "T5", "V4", "face_contact", "surface_to_surface", []),
+  D("gt_th1_fixed_front", "TH1", "TopStyle2FixedFrontPanel", "structural_butt_joint", "edge_to_surface", ["screw_hole"]),
+  D("gt_bh1_fixed_front", "BH1", "BottomStyle2FixedFrontPanel", "structural_butt_joint", "edge_to_surface", ["screw_hole"]),
+  D("gt_th1_v1", "TH1", "V1", "face_contact", "surface_to_surface", []),
+  D("gt_bh1_v1", "BH1", "V1", "face_contact", "surface_to_surface", []),
 ];
+
+function present(d: RelationshipDeclaration, ids: ReadonlySet<string>): boolean {
+  return [d.panelAId, d.panelBId, d.hostPanelId, d.targetPanelId].every((id) => ids.has(id));
+}
 
 export function relationshipDeclarationsForBoards(
   boardIds: ReadonlySet<string>,
 ): RelationshipDeclaration[] {
-  return GT_RELATIONSHIP_DECLARATIONS.filter((d) =>
-    [d.panelAId, d.panelBId, d.hostPanelId, d.targetPanelId].every((id) => boardIds.has(id)),
-  );
+  const extra: RelationshipDeclaration[] = [];
+  const vs = ["V1", "V2", "V3", "V4", "V5"].filter((id) => boardIds.has(id));
+  const bottoms = [...boardIds].filter((id) => /^H\d+_(bottom|fridge)$/.test(id));
+  const deck = boardIds.has("B3") ? "B3" : boardIds.has("BH1") ? "BH1" : null;
+  if (deck) {
+    for (const v of vs) extra.push(D(`gt_${deck.toLowerCase()}_${v.toLowerCase()}`, deck, v, "face_contact", "surface_to_surface", []));
+    for (const h of bottoms) extra.push(D(`gt_${deck.toLowerCase()}_${h.toLowerCase()}`, deck, h, "structural_butt_joint", "edge_to_surface", ["screw_hole"]));
+  }
+  const seen = new Set<string>();
+  return [...GT_RELATIONSHIP_DECLARATIONS, ...extra].filter((d) => {
+    if (!present(d, boardIds) || seen.has(d.declarationId)) return false;
+    seen.add(d.declarationId);
+    return true;
+  });
 }

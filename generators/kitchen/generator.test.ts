@@ -63,7 +63,10 @@ assert.equal(r.boards.length, 16);
 assert.equal(r.slots.length, 4);
 assert.equal(r.hinges.length, 4);
 assert.equal(r.locks.length, 3);
-assert.equal(r.joints.length, 2);
+assert.ok(r.joints.some((j) => j.id === "kt_b1_b2_front_to_carcass_rail"), "B1↔B2 for style_1/2 explode");
+assert.ok(r.joints.some((j) => j.id === "kt_b1_b3_bottom_rail_to_deck"));
+assert.ok(r.joints.some((j) => j.id === "kt_b2_b3_carcass_rail_to_deck"));
+assert.ok(r.joints.length >= 6, "V↔B3 and top rails declared");
 
 /* ---------- V 板 ---------- */
 {
@@ -257,6 +260,9 @@ assert.equal(r.debug?.boardFrame, "final");
   };
   assert.deepEqual(p("B1"), { x0: 16, x1: 887, y0: -16, y1: 0, z0: 0, z1: 55 });
   assert.deepEqual(p("B2"), { x0: 16, x1: 887, y0: 0, y1: 15, z0: 0, z1: 55 });
+  const b1b2 = s2.joints.find((j) => j.id === "kt_b1_b2_front_to_carcass_rail");
+  assert.ok(b1b2 && b1b2.a.faces.length + b1b2.b.faces.length > 0, "style_2 B1↔B2 has faces");
+  assert.equal(s2.boards.find((x) => x.id === "c1-door-front-panel")?.category, "front_panel");
   const v1 = s2.boards.find((x) => x.id === "V1")!.profileVector as { y: number }[];
   assert.ok(v1.some((q) => q.y === 15), "style_2 V frontY = CPT");
 }

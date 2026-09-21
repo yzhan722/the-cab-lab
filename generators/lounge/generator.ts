@@ -33,7 +33,9 @@ function mkBoard(
 ): Board {
   const box = recordBoardBox(id, r2(x0), r2(x1), r2(y0), r2(y1), r2(z0), r2(z1));
   return {
-    id, name, category: boardType, boardType,
+    id, name,
+    category: boardType === "front" || boardType === "cabinet_door" ? "front_panel" : boardType,
+    boardType,
     materialThickness: thickness, profilePlane: plane, thicknessAxis: axis,
     stock: { kind: "partition", thickness },
     ...box,

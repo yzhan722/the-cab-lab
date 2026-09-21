@@ -17,7 +17,7 @@ export function buildTallFaces(fb: {
   const B = new Map(fb.boards.map((b) => [b.id, b]));
   for (const b of fb.boards) {
     b.role = b.category;
-    if (b.category === "front" || b.boardType === "front_panel") {
+    if (b.category === "front_panel" || b.boardType === "front_panel") {
       annotate(b, "B", { semantic: "front", visible: true });
       annotate(b, "A", { semantic: "back", visible: false });
     }

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { relations, isStrong } from "../../renderer/bench/explode.js";
+import { planExplode, isStrong } from "../../renderer/bench/explode.js";
 import { generateSmallCabinet } from "../smallCabinet/generator.ts";
 import { generateOverheadCabinet } from "../overheadCabinet/generator.ts";
 import { generateBedroom, setLayout, bedBoxSizeFor } from "../bedroom/generator.ts";
@@ -36,10 +36,15 @@ function provenance(name: string, result: { boards?: Array<{ id: string; x0: num
   }
 }
 
-function explode(name: string, result: { boards: unknown[]; joints?: unknown[] }) {
-  const rels = relations(result);
+function explode(name: string, result: { boards: Array<{ id: string; category?: string }>; joints?: unknown[] }) {
+  const { rels, order } = planExplode(result);
   assert.ok(rels.size > 0, `${name}: explode relations`);
   assert.ok([...rels.values()].some(isStrong), `${name}: strong explode relation`);
+  const fronts = result.boards.filter((b) => b.category === "front_panel").map((b) => b.id);
+  if (fronts.length) {
+    const firstFront = Math.min(...fronts.map((id) => order.indexOf(id)));
+    assert.ok(order.slice(firstFront).every((id) => fronts.includes(id)), `${name}: fronts last`);
+  }
 }
 
 /* ---- small / OHC ---- */
@@ -139,6 +144,14 @@ function explode(name: string, result: { boards: unknown[]; joints?: unknown[] }
   assert.equal(loungeFromPolyline([{ x: 0, y: 600 }, { x: 2000, y: 600 }, { x: 2000, y: 800 }]).params.style, "L_SHAPE");
   assert.equal(loungeFromPolyline([{ x: 0, y: 800 }, { x: 1500, y: 800 }, { x: 4000, y: 800 }]).params.style, "PARALLEL");
   assert.equal(loungeFromPolyline([{ x: 0, y: 0 }, { x: 0, y: 1600 }, { x: 2000, y: 1600 }, { x: 2000, y: 0 }]).params.style, "U_SHAPE");
+  explode("lounge-U", generateLounge({ style: "U_SHAPE", height: 420, mainWidth: 2000, mainDepth: 1600, lDepth: 600, topLidEnabled: false }));
+  explode("lounge-Parallel", generateLounge({ style: "PARALLEL", height: 420, totalWidth: 4000, singleLoungeWidth: 1500, depth: 800, topLidEnabled: true }));
+  explode("tall-style2", generateGeneralTall({
+    cabinetHeight: 2000, cabinetWidth: 600, cabinetDepth: 584,
+    panelThickness: 16, frontPanelThickness: 16,
+    topSystem: { style: "style_2" }, bottomSystem: { style: "style_2" },
+    zones: [{ id: "open", type: "open_space", height: 1820 }],
+  }));
 }
 
 /* ---- bench + bundle wiring ---- */
