@@ -135,14 +135,11 @@ function refreshRail() {
   const mode = getMode();
   const loungeStep = mode.startsWith("lounge.") ? mode.slice("lounge.".length) : null;
   const LOUNGE_HINT = {
-    back1: "click the first point of the back edge on the floor · Esc cancels",
-    back2: "click the other end of that edge · type L · Esc cancels",
-    depth: getLoungeStyle() === "I"
-      ? "pull it into the room · type D or H · click or Enter creates · Esc steps back"
-      : "pull the middle run into the room · type D · click or Enter · Esc steps back",
-    side: "the lit end gets the return · click it · Esc steps back",
-    width: "pull from that end's front corner into the room · type the extra length or H · click or Enter creates · Esc steps back",
-    height: "type H · click or Enter creates the cabinet · Esc steps back",
+    corner: "click one corner of the plan · Esc cancels",
+    face: "click the opposite corner — that sets length and depth together · type W or D · Esc steps back",
+    side: "the lit end gets the side cabinet · click it · Esc steps back",
+    width: "pull the side cabinet's width · type W · click or Enter · Esc steps back",
+    height: "pull the height · type H · click or Enter creates · Esc steps back",
   };
   const HINTS = {
     armed: placing
