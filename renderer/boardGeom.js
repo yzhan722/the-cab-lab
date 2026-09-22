@@ -51,7 +51,7 @@ export function prismXZ(outline, y0, y1, holes = []) {
  * its profile plane — or null when it is a plain box. YZ outlines are
  * cabinet-local already (or board-local `cutProfileVector`, shifted by y0/z0);
  * XY / XZ outlines are aligned so their minimum meets the board's bounding
- * box, like the Fusion adapter does (`_align_body_axis_min`).
+ * box (`_align_body_axis_min`).
  */
 function xyShift(b) {
   const pv = b.profileVector;

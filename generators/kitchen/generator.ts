@@ -459,7 +459,7 @@ function resolveSlots(
       const mode = s.prefs.get(vi);
       if (!mode) {
         errors.push(`Unresolved double-sided half-slot conflict on V${vi}.`);
-        resolveLeft = "half"; resolveRight = "half"; // Fusion 行为：报错但仍按 half 生成
+        resolveLeft = "half"; resolveRight = "half"; // 报错但仍按 half 生成
       } else {
         [resolveLeft, resolveRight] = MACHINING_TABLE[mode];
       }
@@ -738,7 +738,7 @@ export function generateKitchenCabinet(input: KitchenParams): KitchenResult {
         xyNotch(a, b, 0, stripW, ns, notchD, "far")));
     });
   }
-  // T2 顶后条：y∈[cd−100, cd]；灶台 y 带不相交时保持整段（Fusion 同款过滤）
+  // T2 顶后条：y∈[cd−100, cd]；灶台 y 带不相交时保持整段
   {
     const y0 = r2(cd - stripW);
     const segs = segmentBy(rearStop.x0, rearStop.x1, stoveXCutsForY(y0, cd));

@@ -1,7 +1,7 @@
 /**
  * 厨房底柜（Kitchen Base Cabinet）— 列 × 区两级布局。
  *
- * 坐标契约（与 Cab Lab 一致，Fusion kitchen 本来就是这个方向）：
+ * 坐标契约：y=0 为结构前缘（门侧），门板在 y∈[−FPT, 0]。
  * x 左起；y=0 为结构前缘（门侧），门板悬于 y∈[−FPT, 0]，y=+cd 为墙侧；
  * z 地板=0 向上，总高含 BCH。**勿套用 overhead 的 Y 翻转。**
  * 结构深 cd = depth − FPT（depth 参数含门厚）。

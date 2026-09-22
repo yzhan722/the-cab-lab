@@ -3,8 +3,7 @@
 > 目的：从既有实现提取**行为与逻辑规格**（不含实现代码），供不照搬代码的重新实现使用。
 > 验收方式：数值对拍（golden preset + pins，0.01 mm）。
 > 事实来源：参数/常量/接缝声明（数据）、测试断言数值（验收基准）。
-> 坐标注意：Fusion 端局部系 **y=0 为墙侧、y=+D 为房侧（I/L 形）；PARALLEL 的 front 在 y∈[0,ppt]（与 I/L 相反）**。
-> Cab Lab 重实现须统一为全局契约：**前脸 −Y**，且放置层走 features2d 折线（I 两点 / L 三点 / U 四点 / Parallel 三点）。
+> 坐标：I/L 的 y=0 为房侧、y=+D 为墙侧；PARALLEL 的 front 在 y∈[0,ppt]。**前脸 −Y**。放置层走折线（I 两点 / L 三点 / U 四点 / Parallel 三点）。
 
 ## 1. 模块定位
 
@@ -110,7 +109,7 @@ gap = totalWidth − 2×singleLoungeWidth。左段 x∈[0, SW]，右段 x∈[tot
 
 ### U_SHAPE — ⚠️ 已知缺口
 
-Fusion 端 U_SHAPE **落入 L 分支**（仅画 L，测试有 "Only L-Shaped" 警告）。Cab Lab 重实现必须补真 U：包围盒内三条 I 形段、开口朝局部 Y=0。
+U 形是包围盒内三条 I 形段，开口朝局部 Y=0。
 
 ## 6. 接缝声明（声明式数据，L 形 v1）
 

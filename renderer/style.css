@@ -197,7 +197,7 @@ button:disabled { cursor: default; opacity: 0.45; }
 }
 
 /* ---------- browser (over the 3D view) ---------- */
-/* Module → board → face, floating at the top left of the viewport like Fusion's browser: no panel
+/* Module → board → face, floating at the top left of the viewport: no panel
    background, the scene shows through; text carries a shadow so it reads over the grid. */
 #browser {
   position: absolute;

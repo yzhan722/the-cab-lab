@@ -3,7 +3,7 @@
 > 目的：从既有实现提取**行为与逻辑规格**（不含实现代码），供不照搬代码的重新实现使用。
 > 验收方式：数值对拍（golden preset + pins，0.01 mm），与代码来源无关。
 > 事实来源：参数/常量/接缝声明（数据）、单元测试断言（66 用例 + 冰箱 12 用例 + 堆叠/边界/审计各独立套）与 oracle 验证输出（验收基准）。
-> 坐标注意：Fusion 端 GT 局部系 **y=0 为柜身前缘**：核心板（端系统/Zi/H/VD/DS）y∈[0, midDepth]，midDepth = CD − FPT（**depth 含门厚**）；门板层 frontPanels 悬于 y∈[−FPT, 0]（数据层，非 Board）。⚠️ V1–V4/V5 立梃 bbox 用 y∈[FPT, CD]、侧板用 y∈[−FPT, CD−FPT]——**三套 Y 参考并存**（§4 已知坑①）。V 板 profileVector/cutProfileVector 为**局部 YZ 坐标**（y∈[0,150]），与 bbox 绝对坐标并存（坑②）。毫米、Z 向上（地板 z=0）、x 左起。Cab Lab 端输出 boardFrame "final"、前脸 −Y；重实现须统一 Y 翻转并消除三套参考。
+> 坐标：一套最终柜体坐标。核心板（端系统/Zi/H/VD/DS）y∈[0, midDepth]，midDepth = CD − FPT（**depth 含门厚**）；门板层 frontPanels 悬于 y∈[−FPT, 0]（数据层，非 Board）。立梃与侧板用同一套柜体 Y。毫米、Z 向上（地板 z=0）、x 左起。输出 boardFrame "final"、前脸 −Y。
 
 ---
 

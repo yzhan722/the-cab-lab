@@ -29,7 +29,7 @@
   "STRENGTHENING_STRIP_NOTCH_Y": { "value": 85, "doc": "层板前缘让加强条的缺口深（y∈[0,85]）。" },
   "STRENGTHENING_GROOVE_Y0": { "value": 80, "doc": "加强条自身槽 y 下界。" },
   "STRENGTHENING_GROOVE_CLEARANCE": { "value": 0.5, "doc": "加强条槽 z 相对层板的余量。" },
-  "RAISED_B4_HEIGHT": { "value": 100, "doc": "轮拱 raised B4 高度/避让缩短带（Fusion 字面量 100）。" },
+  "RAISED_B4_HEIGHT": { "value": 100, "doc": "轮拱 raised B4 高度/避让缩短带（100 mm）。" },
   "STOVE_CUT_FRONT_EXTRA": { "value": 100, "doc": "灶台切割区 y ∈ [0, FPT+100]。" },
   "SLOT_Z_CLEARANCE": { "value": 0.5, "doc": "槽 z = 板 z ± 0.5。" },
   "TONGUE_FALLBACK_SLACK": { "value": 0.5, "doc": "槽信息缺失时舌长 = CPT/2 − 0.5。" }

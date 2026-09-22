@@ -1,8 +1,7 @@
 // Bundles The Cab Lab's own TypeScript generators (./generators/*)
 // into ESM files the Electron renderer can import. The renderer never
 // re-implements cabinet formulas; it only calls these bundles.
-// These sources are independent of E:\Work\Cursor Project\modules and
-// of the Fusion plugin — do not point this script at those trees.
+// These sources live under generators/. Do not point this script at another tree.
 //
 //   node build-generators.js                 build everything
 //   node build-generators.js overheadCabinet build one entry (the bench does this after a rule change)

@@ -1,7 +1,7 @@
 /**
  * Kitchen 黄金测试 — 数值取自规格 §8（kitchen_base 黄金参数）。
- * Fusion kitchen 的 Y 约定与 Cab Lab 一致（y=0 前缘），数值直接对拍，无坐标转换。
- * 预期含 1 条 error（V1 双侧半槽冲突，Fusion 黄金集本身如此）。
+ * 厨房 Y：y=0 为前缘，数值直接对拍，无坐标转换。
+ * 预期含 1 条 error（V1 双侧半槽冲突，黄金集本身如此）。
  */
 import assert from "node:assert/strict";
 import { generateKitchenCabinet } from "./generator.ts";
@@ -247,7 +247,7 @@ assert.equal(r.debug?.boardFrame, "final");
   assert.ok(door.faces.find((f) => f.id === "A").features.some((x) => x.kind === "hole" && x.for === "hinge"));
 }
 
-/* ---------- style_2 趾踢 + 灶台 T1/T2/T3 切分（Fusion 公式） ---------- */
+/* ---------- style_2 趾踢 + 灶台 T1/T2/T3 切分 ---------- */
 {
   const s2 = generateKitchenCabinet({
     ...PARAMS,

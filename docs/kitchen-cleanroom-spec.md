@@ -3,7 +3,7 @@
 > 目的：从既有实现提取**行为与逻辑规格**（不含实现代码），供不照搬代码的重新实现使用。
 > 验收方式：数值对拍（golden preset + pins，0.01 mm），与代码来源无关。
 > 事实来源：参数/常量/接缝声明（数据）、桥接脚本实测输出（验收基准）。
-> 坐标注意：Fusion 端 kitchen 局部系 **y=0 为结构前缘（门侧）、y=+cd 为墙侧，门板悬于 y∈[−FPT, 0]**——与同仓库 overhead（y=0 墙侧）**相反**，但与 Cab Lab 契约（前脸 −Y）方向恰好一致；重实现 kitchen **不得**沿用 overhead 的 Y 翻转。毫米、Z 向上（地板 z=0）、x 左起。Cab Lab 端输出 boardFrame "final"。
+> 坐标：y=0 为结构前缘（门侧）、y=+cd 为墙侧，门板悬于 y∈[−FPT, 0]。吊柜的 y=0 在墙侧，厨房不要套用那套翻转。毫米、Z 向上（地板 z=0）、x 左起。输出 boardFrame "final"。
 
 ---
 
@@ -130,7 +130,7 @@ frontY = style_2 ? CPT : 70。按 z 分带读：z∈[0,BCH) 前缘 frontY；z∈
 
 ### 已知坑（四条，重实现必须处理）
 
-1. **坐标约定不一致**：Fusion 各模块 Y 轴互相矛盾——overhead y=0 墙侧、kitchen y=0 前缘（门在 −Y）。kitchen 与 Cab Lab 契约方向一致，**直接采用即可，勿套用 overhead 的翻转**；注意 depth 含门厚（cd = depth−FPT）、V0 前可见时 y 延伸至 −FPT。
+1. **坐标**：吊柜 y=0 在墙侧，厨房 y=0 在前缘（门在 −Y）。厨房按前缘这一套生成，不要套用吊柜的翻转。depth 含门厚（cd = depth−FPT），V0 前可见时 y 延伸至 −FPT。
 2. **fallback/占位分支**：bottomClearanceStyle 非 "style_2" 一律按 style_1 兜底；`custom` 区行为等同 open 无专属形态；stove 切割区 y∈[0, FPT+100] 按相交过滤后**实际只切 T1**（T2/T3 的 y 范围永不相交），且 stove 区不生成任何门板/台面特征——半成品形态；columnType、lockPresetId 传入未用；b3InternalNotchDepth 残留；frontClearance/lockEnabled/hingeSettings 等经类型断言读取，types.ts 未声明。
 3. **残留后处理 hack**（lounge 平移 hack 的同类）：侧板前可见与灶台 V 板缺口修正均为 0.001 阈值**事后点改写**（applySideFrontVisibility / removeUnsupportedEdgeStoveVPanelNotches），重实现应直接生成目标轮廓；功能板舌**两阶段**生成（先按 CPT/2 建型，槽解析后重写 x0/x1/profileXY）应一步到位；B3 对不相交的 V 板也产零宽 notch（仅 DXF 层丢弃）；raised B4 与缩短带用字面量 100。
 4. **接缝声明覆盖不全**：仅 2 条（见 §6），源码注释自认 "v1: bottom rail-to-deck only"；V 板互锁、功能板舌槽、T 系与 V/B3、门板铰链均无声明。黄金 preset 13 个 DXF 面板中只覆盖 2 对。

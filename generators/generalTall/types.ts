@@ -1,7 +1,7 @@
 /**
  * 高柜（General Tall Cabinet）— 单列高柜，zones 自下而上堆叠。
  *
- * 坐标：Cab Lab 一套最终柜体坐标（消掉 Fusion 三套 Y / core 事后平移）。
+ * 坐标：一套最终柜体坐标（前脸 −Y，无事后平移）。
  * - y=0 前柜身，门 y∈[−FPT, 0]，墙侧 y = midDepth = CD − FPT（depth 含门厚）。
  * - 全部板的 x/y 一次写成装配位；轮廓与 bbox、槽/舌特征同一套数字。
  * - V1/V2 深 150，从 y=0 起；V3/V4 深 150，后缘贴 midDepth。四块立板都比门厚基准朝前一个门厚。
