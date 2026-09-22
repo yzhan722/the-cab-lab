@@ -619,7 +619,7 @@ const generalTallCabinet = {
 const loungeGenerator = {
   id: "loungeGenerator",
   label: "Lounge",
-  sub: "I / L / U / Parallel",
+  sub: "I / L",
   defaultSize: { W: 2000, D: 800, H: 420 },
   minSize: { W: 800, D: 400, H: 300 },
   defaults(W, D, H) {
@@ -642,6 +642,9 @@ const loungeGenerator = {
     if (params.style === "PARALLEL") {
       return { W: params.totalWidth ?? 4000, D: params.depth ?? 800, H: params.height ?? 420 };
     }
+    if (params.style === "L_SHAPE") {
+      return { W: params.mainWidth ?? 2000, D: params.lWidth ?? 1600, H: params.height ?? 420 };
+    }
     const lD = params.lDepth ?? 800;
     const mD = params.mainDepth ?? 600;
     return { W: params.mainWidth ?? 2000, D: Math.max(lD, mD), H: params.height ?? 420 };
@@ -652,7 +655,11 @@ const loungeGenerator = {
   setEnvelope(params, { W, D, H }) {
     const next = { ...params };
     if (W != null) next.mainWidth = round1(W);
-    if (D != null) next.lDepth = round1(D);
+    if (D != null) {
+      if (params.style === "L_SHAPE") next.lWidth = round1(D);
+      else if (params.style === "U_SHAPE") next.mainDepth = round1(D);
+      else next.lDepth = round1(D);
+    }
     if (H != null) next.height = round1(H);
     return next;
   },
@@ -707,6 +714,15 @@ export const MODULE_GROUPS = [
       { moduleId: "bedroom", label: "Body", sub: "nose volume" },
       { moduleId: "bedBox", label: "Bed Box", sub: "bed base · needs the body" },
       { id: "bedSideTable", label: "Bed Side Table", sub: "not wired yet", planned: true },
+    ],
+  },
+  {
+    id: "lounge",
+    label: "Lounge",
+    sub: "I / L",
+    items: [
+      { moduleId: "loungeGenerator", lounge: "I", label: "I", sub: "one run" },
+      { moduleId: "loungeGenerator", lounge: "L", label: "L", sub: "middle run, then one wing" },
     ],
   },
 ];

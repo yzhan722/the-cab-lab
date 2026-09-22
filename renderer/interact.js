@@ -13,13 +13,14 @@
 // The cursor tooltip always says what the snap / inference / clamp is doing.
 // Every edit writes pose or params through job.js and lets the generator redraw.
 import * as THREE from "three";
-import { canvas, rayFromClient, planePointAt, closestTOnLine, frame } from "./space.js";
+import { canvas, rayFromClient, planePointAt, closestTOnLine, floorPointAt, frame } from "./space.js";
 import * as job from "./job.js";
 import { getModule, BEDROOM_LAYOUT_LABEL as LAYOUT_LABEL } from "./modules.js";
+import { loungeFootprintBoxes, loungeFromDrawnRun } from "./gen/lounge.js";
 import { getPreset } from "./presets.js";
 import {
   pickables, groupFor, envelopeBox, envelopeFootprint, cabinetFootprints, poseFits, setHandleHover, faceUnderHit, disarmHandle,
-  showGhost, hideGhost, showNoseGhost, showWidthRect, hideWidthRect, showCPlanePreview, hideCPlanePreview, showSnapMarker, hideSnapMarker, showInference, hideInference, showAlignLines, hideAlignLines,
+  showGhost, hideGhost, showNoseGhost, showWidthRect, hideWidthRect, showLoungeGhost, hideLoungeGhost, showCPlanePreview, hideCPlanePreview, showSnapMarker, hideSnapMarker, showInference, hideInference, showAlignLines, hideAlignLines,
   showFaceHint, hideFaceHint, flashFaceHint,
 } from "./cabinets3d.js";
 import {
@@ -44,6 +45,7 @@ let orient = null; // Face command: { id, pose0, before, pending: face | null }
 let retype = null; // keyboard re-size of the last created cabinet
 let nose = null; // nose placement (Bedroom): { moduleId, step: ready | drag, editId, D, t0, locked, snapLabel, clamped }
 let bed = null; // bed box placement: { moduleId, step: width | depth, editId, W, D, H, locked: {W, D}, snapLabel, clamped }
+let lounge = null; // lounge placement: { style: I|L|U, step, a, b, depth, roomSign, side, wing, height, locked }
 let cplane = null; // construction plane: { step: pick | offset, face, offset, locked, snapLabel, clamped }
 let lastSize = null; // { moduleId, W, D, H } of the last created box
 let lastCreated = null; // cabinet id that digits re-type while still armed
@@ -70,13 +72,17 @@ export function getMode() {
   if (orient) return orient.pending ? "orient.pending" : "orient.pick";
   if (nose) return nose.step === "ready" ? "nose.ready" : "nose.drag";
   if (bed) return `bedbox.${bed.step}`;
+  if (lounge) return `lounge.${lounge.step}`;
   if (cplane) return cplane.step === "pick" ? "plane.pick" : "plane.offset";
   if (rb) return rb.step;
   if (placing) return "armed";
   return "idle";
 }
 export function getPlacingModule() {
-  return placing || (nose ? nose.moduleId : null) || (bed ? bed.moduleId : null);
+  return placing || (nose ? nose.moduleId : null) || (bed ? bed.moduleId : null) || (lounge ? lounge.moduleId : null);
+}
+export function getLoungeStyle() {
+  return lounge ? lounge.style : null;
 }
 
 // --- arm / disarm ----------------------------------------------------------------
@@ -89,6 +95,7 @@ export function armPlacement(moduleId) {
   cancelOrient();
   cancelNose();
   cancelBedBox();
+  cancelLounge();
   cancelPlane();
   endRetype(false);
   placing = moduleId;
@@ -102,6 +109,7 @@ export function armPlacement(moduleId) {
 export function disarm() {
   if (nose) { cancelNose(); return; }
   if (bed) { cancelBedBox(); return; }
+  if (lounge) { cancelLounge(); return; }
   if (cplane) { cancelPlane(); return; }
   if (placing) log("place.disarm", { moduleId: placing, step: rb && rb.step });
   clearTrace();
@@ -115,6 +123,8 @@ export function disarm() {
 }
 function clearPreview() {
   hideGhost();
+  hideLoungeGhost();
+  setDimNames(["W", "D", "H"]);
   hideSnapMarker();
   hideInference();
   hideAlignLines();
@@ -910,6 +920,7 @@ export function startNose(moduleId) {
   cancelOrient();
   cancelNose();
   cancelBedBox();
+  cancelLounge();
   cancelPlane();
   endRetype(false);
   if (placing) { placing = null; rb = null; lastCreated = null; clearPreview(); }
@@ -1063,6 +1074,7 @@ export function startPlane() {
   cancelOrient();
   cancelNose();
   cancelBedBox();
+  cancelLounge();
   endRetype(false);
   if (placing) { placing = null; rb = null; lastCreated = null; clearPreview(); }
   cplane = { step: "pick", face: null, offset: 0, locked: null, snapLabel: null, clamped: null };
@@ -1206,6 +1218,7 @@ export function startBedBox(moduleId) {
   cancelOrient();
   cancelNose();
   cancelBedBox();
+  cancelLounge();
   cancelPlane();
   endRetype(false);
   if (placing) { placing = null; rb = null; lastCreated = null; clearPreview(); }
@@ -1314,6 +1327,390 @@ export function cancelBedBox() {
   emitMode();
 }
 
+// --- lounge placement (I / L / U on the floor) ------------------------------------
+
+const LOUNGE_MIN = 50;
+
+function freshLounge(style) {
+  return {
+    moduleId: "loungeGenerator", style, step: "back1",
+    a: null, b: null, depth: null, roomSign: 1, side: null, wing: null,
+    height: 420, locked: null, lastClient: null,
+  };
+}
+
+export function startLounge(style) {
+  if (!job.hasSpace()) { log("lounge.arm.blocked", { style, reason: "no space" }); return; }
+  cancelMove();
+  cancelOrient();
+  cancelNose();
+  cancelBedBox();
+  if (lounge) cancelLounge();
+  cancelPlane();
+  endRetype(false);
+  if (placing) { placing = null; rb = null; lastCreated = null; }
+  lounge = freshLounge(style);
+  clearPreview();
+  job.select(null);
+  canvas.style.cursor = "crosshair";
+  log("lounge.arm", { style });
+  emitMode();
+}
+
+export function cancelLounge() {
+  if (!lounge) return;
+  const s = lounge;
+  lounge = null;
+  log("lounge.cancel", { style: s.style, step: s.step });
+  clearPreview();
+  canvas.style.cursor = "";
+  emitMode();
+}
+
+function loungeFloor(e) {
+  if (!e) return null;
+  const p = floorPointAt(e.clientX, e.clientY);
+  if (!p) return null;
+  return { x: job.snap(p.x), y: job.snap(p.y) };
+}
+
+function loungeSecond(pt) {
+  if (!lounge.a || !pt) return null;
+  const aligned = Math.abs(pt.x - lounge.a.x) >= Math.abs(pt.y - lounge.a.y)
+    ? { x: pt.x, y: lounge.a.y }
+    : { x: lounge.a.x, y: pt.y };
+  const dx = aligned.x - lounge.a.x;
+  const dy = aligned.y - lounge.a.y;
+  const len = Math.hypot(dx, dy);
+  if (lounge.step === "back2" && lounge.locked != null) {
+    if (len < 1 || lounge.locked < LOUNGE_MIN) return null;
+    const s = lounge.locked / len;
+    return { x: job.snap(lounge.a.x + dx * s), y: job.snap(lounge.a.y + dy * s) };
+  }
+  if (len < LOUNGE_MIN) return null;
+  return aligned;
+}
+
+function loungeBasis(a, b, sign) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return null;
+  let ux = dx / len;
+  let uy = dy / len;
+  let rx = uy;
+  let ry = -ux;
+  let left = a;
+  let right = b;
+  if (sign < 0) {
+    ux = -ux; uy = -uy; rx = -rx; ry = -ry;
+    left = b; right = a;
+  }
+  return { len, ux, uy, rx, ry, left, right, sign };
+}
+
+function loungeDepthLive(pt) {
+  if (!lounge.a || !lounge.b) return null;
+  const dx = lounge.b.x - lounge.a.x;
+  const dy = lounge.b.y - lounge.a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return null;
+  const rx = dy / len;
+  const ry = -dx / len;
+  let sign = lounge.roomSign || 1;
+  if (pt) {
+    const s = (pt.x - lounge.a.x) * rx + (pt.y - lounge.a.y) * ry;
+    if (Math.abs(s) > 1) sign = s >= 0 ? 1 : -1;
+  }
+  if (lounge.step === "depth" && lounge.locked != null) return { depth: lounge.locked, roomSign: sign };
+  if (lounge.step !== "depth" && lounge.depth != null) return { depth: lounge.depth, roomSign: lounge.roomSign || 1 };
+  if (!pt) return null;
+  const s = (pt.x - lounge.a.x) * rx + (pt.y - lounge.a.y) * ry;
+  return { depth: Math.abs(s), roomSign: Math.abs(s) > 1 ? (s >= 0 ? 1 : -1) : sign };
+}
+
+function loungeSideAt(pt, basis) {
+  if (!pt || !basis) return null;
+  const dl = Math.hypot(pt.x - basis.left.x, pt.y - basis.left.y);
+  const dr = Math.hypot(pt.x - basis.right.x, pt.y - basis.right.y);
+  return dl <= dr ? "LEFT" : "RIGHT";
+}
+
+function loungeExtra(pt, basis, depth) {
+  if (!basis || !(depth > 0)) return 0;
+  if (lounge.style === "L" && !lounge.side) return 0;
+  if (lounge.step === "width" && lounge.locked != null) return lounge.locked;
+  if (!pt) return 0;
+  const along = (pt.x - basis.left.x) * basis.rx + (pt.y - basis.left.y) * basis.ry;
+  return Math.max(0, along - depth);
+}
+
+function loungeHeightNow() {
+  return Math.max(lounge.height || 420, LOUNGE_MIN);
+}
+
+function loungeSpec(pt, e) {
+  if (!lounge.a || !lounge.b) return null;
+  const live = loungeDepthLive(pt);
+  if (!live || !(live.depth >= 1)) return null;
+  const basis = loungeBasis(lounge.a, lounge.b, live.roomSign);
+  if (!basis) return null;
+  const extra = lounge.style === "I" ? 0 : loungeExtra(pt, basis, live.depth);
+  const wing = live.depth + extra;
+  const height = loungeHeightNow();
+  let placed;
+  if (lounge.style === "L" && lounge.side && extra >= LOUNGE_MIN) {
+    placed = loungeFromDrawnRun({
+      a: lounge.a, b: lounge.b, depth: live.depth, roomSign: live.roomSign,
+      style: "L", side: lounge.side, wing,
+      height: Math.max(height, LOUNGE_MIN),
+    });
+  } else {
+    placed = loungeFromDrawnRun({
+      a: lounge.a, b: lounge.b, depth: live.depth, roomSign: live.roomSign, style: "I", height: Math.max(height, LOUNGE_MIN),
+    });
+  }
+  return { placed, basis, wing, extra, height, depth: live.depth };
+}
+
+function loungeWorldBoxes(placed, z1) {
+  const rad = ((placed.pose.rotZ || 0) * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return loungeFootprintBoxes(placed.params).map((b) => {
+    const xs = [];
+    const ys = [];
+    for (const [x, y] of [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]]) {
+      xs.push(placed.pose.x + x * c - y * s);
+      ys.push(placed.pose.y + x * s + y * c);
+    }
+    return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), z0: 0, z1 };
+  });
+}
+
+function loungeEndCap(basis, side, depth, height) {
+  const end = side === "RIGHT" ? basis.right : basis.left;
+  const inward = side === "RIGHT" ? -1 : 1;
+  const mark = 120;
+  const corners = [0, 1].flatMap((room) => [0, 1].map((inn) => ({
+    x: end.x + basis.ux * inward * mark * inn + basis.rx * depth * room,
+    y: end.y + basis.uy * inward * mark * inn + basis.ry * depth * room,
+  })));
+  const xs = corners.map((p) => p.x);
+  const ys = corners.map((p) => p.y);
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), z0: 0, z1: height };
+}
+
+function loungeOpenDim(step) {
+  const keys = step === "back2" ? ["W"]
+    : step === "depth" && lounge.style === "I" ? ["D", "H"]
+    : step === "depth" ? ["D"]
+    : step === "width" ? ["W", "H"]
+    : [];
+  if (!keys.length) { dimBox.classList.add("hidden"); return; }
+  setDimNames(step === "back2" ? ["L", "D", "H"] : ["W", "D", "H"]);
+  dimBox.classList.remove("hidden");
+  for (const k of DIM_ORDER) {
+    dimLabels[k].classList.toggle("hidden", !keys.includes(k));
+    dimLabels[k].classList.remove("focused");
+    dimLabels[k].classList.toggle("locked", k !== "H" && lounge.locked != null);
+  }
+  if (keys.includes("H") && document.activeElement !== dimInputs.H) dimInputs.H.value = String(Math.round(lounge.height || 420));
+}
+
+function loungeDimBox() {
+  if (!lounge || !lounge.a) return null;
+  const pt = loungeFloor(lounge.lastClient);
+  const spec = lounge.b ? loungeSpec(pt, lounge.lastClient) : null;
+  if (spec && spec.placed) {
+    const boxes = loungeWorldBoxes(spec.placed, spec.height);
+    if (!boxes.length) return null;
+    const x0 = Math.min(...boxes.map((b) => b.x0));
+    const y0 = Math.min(...boxes.map((b) => b.y0));
+    const x1 = Math.max(...boxes.map((b) => b.x1));
+    const y1 = Math.max(...boxes.map((b) => b.y1));
+    return { x0, y0, z0: 0, W: Math.max(x1 - x0, 1), D: Math.max(y1 - y0, 1), H: spec.height };
+  }
+  const b = lounge.b || pt || lounge.a;
+  return {
+    x0: Math.min(lounge.a.x, b.x), y0: Math.min(lounge.a.y, b.y), z0: 0,
+    W: Math.max(Math.abs(b.x - lounge.a.x), 1), D: Math.max(Math.abs(b.y - lounge.a.y), 1), H: 1,
+  };
+}
+
+function updateLounge(e) {
+  if (!lounge) return;
+  if (e) lounge.lastClient = e;
+  const pt = loungeFloor(e || lounge.lastClient);
+  let segment = null;
+  if (lounge.a && lounge.b) segment = [lounge.a, lounge.b];
+  else if (lounge.a && lounge.step === "back2" && pt) segment = [lounge.a, loungeSecond(pt) || pt];
+  const spec = lounge.b ? loungeSpec(pt, e || lounge.lastClient) : null;
+  const boxes = spec ? loungeWorldBoxes(spec.placed, spec.height) : [];
+  const lit = lounge.step === "side" && spec ? loungeSideAt(pt, spec.basis) : (lounge.step === "width" && lounge.side && spec && spec.extra < LOUNGE_MIN ? lounge.side : null);
+  if (lit && spec) boxes.push(loungeEndCap(spec.basis, lit, spec.depth, spec.height));
+  showLoungeGhost(boxes, segment);
+  if (lit && spec) {
+    const end = lit === "RIGHT" ? spec.basis.right : spec.basis.left;
+    showSnapMarker(end.x + spec.basis.rx * spec.depth, end.y + spec.basis.ry * spec.depth, spec.height, { feature: true });
+  } else if (pt) showSnapMarker(pt.x, pt.y, 0, { feature: false });
+  const fields = lounge.step === "back2" ? ["W"]
+    : lounge.step === "depth" && lounge.style === "I" ? ["D", "H"]
+    : lounge.step === "depth" ? ["D"]
+    : lounge.step === "width" ? ["W", "H"]
+    : [];
+  for (const key of fields) {
+    if (document.activeElement === dimInputs[key]) continue;
+    const value = key === "H" ? loungeHeightNow()
+      : key === "D" ? (loungeDepthLive(pt)?.depth || 0)
+      : key === "W" && lounge.step === "width" ? (spec ? spec.extra : 0)
+      : (lounge.a && pt ? Math.hypot((loungeSecond(pt) || pt).x - lounge.a.x, (loungeSecond(pt) || pt).y - lounge.a.y) : 0);
+    dimInputs[key].value = String(Math.round(value));
+    dimLabels[key].classList.toggle("locked", key !== "H" && lounge.locked != null);
+  }
+  if (!e) return;
+  const lines = [`Lounge ${lounge.style}`];
+  if (lounge.step === "back1") lines.push("Click the first point of the back edge");
+  else if (lounge.step === "back2") lines.push(`L ${dimInputs.W.value} along the wall`);
+  else if (lounge.step === "depth") lines.push(`D ${Math.round(spec ? spec.depth : 0)} into the room`);
+  else if (lounge.step === "side") lines.push(lit === "LEFT" ? "Left end — click to put the return here" : lit === "RIGHT" ? "Right end — click to put the return here" : "Move to an end");
+  else if (lounge.step === "width") lines.push(`Return ${Math.round(spec ? spec.extra : 0)} past the front · H ${Math.round(loungeHeightNow())}`);
+  else lines.push(`H ${Math.round(loungeHeightNow())}`);
+  showTip(e.clientX, e.clientY, lines, lounge.locked != null ? "lock" : "");
+}
+
+function loungeClick(e) {
+  if (e) lounge.lastClient = e;
+  const pt = loungeFloor(e);
+  if (lounge.step === "back1") {
+    if (!pt) return;
+    lounge.a = pt;
+    lounge.locked = null;
+    lounge.step = "back2";
+    loungeOpenDim("back2");
+    log("lounge.point", { style: lounge.style, n: 1, ...pt });
+    emitMode();
+    updateLounge(e);
+    return;
+  }
+  if (lounge.step === "back2") {
+    const b = loungeSecond(pt);
+    if (!b) return;
+    lounge.b = b;
+    lounge.locked = null;
+    lounge.step = "depth";
+    loungeOpenDim("depth");
+    log("lounge.point", { style: lounge.style, n: 2, ...b });
+    emitMode();
+    updateLounge(e);
+    return;
+  }
+  if (lounge.step === "depth") {
+    const d = loungeDepthLive(pt);
+    if (!d || d.depth < LOUNGE_MIN) return;
+    lounge.depth = d.depth;
+    lounge.roomSign = d.roomSign;
+    lounge.locked = null;
+    log("lounge.depth", { style: lounge.style, depth: d.depth, roomSign: d.roomSign });
+    if (lounge.style === "I") { finishLounge("click"); return; }
+    lounge.step = "side";
+    dimBox.classList.add("hidden");
+    emitMode();
+    updateLounge(e);
+    return;
+  }
+  if (lounge.step === "side") {
+    const live = loungeDepthLive(pt);
+    const basis = live && loungeBasis(lounge.a, lounge.b, live.roomSign);
+    const side = loungeSideAt(pt, basis);
+    if (!side) return;
+    lounge.side = side;
+    lounge.locked = null;
+    lounge.step = "width";
+    loungeOpenDim("width");
+    log("lounge.side", { side });
+    emitMode();
+    updateLounge(e);
+    return;
+  }
+  if (lounge.step === "width") {
+    const live = loungeDepthLive(pt);
+    const basis = live && loungeBasis(lounge.a, lounge.b, live.roomSign);
+    if (!live || !basis) return;
+    const extra = loungeExtra(pt, basis, live.depth);
+    if (!(extra >= LOUNGE_MIN)) return;
+    lounge.wing = live.depth + extra;
+    lounge.locked = null;
+    log("lounge.width", { extra, wing: lounge.wing, side: lounge.side });
+    finishLounge("click");
+    return;
+  }
+}
+
+function finishLounge(how) {
+  if (!lounge || !lounge.a || !lounge.b || !(lounge.depth >= LOUNGE_MIN)) return;
+  const creating = lounge.style === "I" ? lounge.step === "depth" : lounge.step === "width";
+  if (!creating) return;
+  const height = loungeHeightNow();
+  const depth = lounge.depth;
+  const roomSign = lounge.roomSign || 1;
+  let placed;
+  if (lounge.style === "L") {
+    if (!(lounge.wing > depth) || !lounge.side) return;
+    placed = loungeFromDrawnRun({
+      a: lounge.a, b: lounge.b, depth, roomSign, style: "L", side: lounge.side, wing: lounge.wing, height,
+    });
+  } else {
+    placed = loungeFromDrawnRun({ a: lounge.a, b: lounge.b, depth, roomSign, style: "I", height });
+  }
+  const env = {
+    W: placed.params.mainWidth,
+    D: placed.params.style === "L_SHAPE" ? placed.params.lWidth : placed.params.mainDepth,
+    H: height,
+  };
+  const style = lounge.style;
+  const cab = job.addCabinet(lounge.moduleId, placed.pose, env, placed.params);
+  log("lounge.finish", { style, id: cab.id, how, params: placed.params, pose: placed.pose });
+  lounge = freshLounge(style);
+  clearPreview();
+  canvas.style.cursor = "crosshair";
+  job.select(cab.id);
+  emitMode();
+}
+
+function loungeConfirm(how) {
+  if (!lounge) return;
+  if (lounge.step === "back2" || lounge.step === "depth" || lounge.step === "width") loungeClick(lounge.lastClient);
+}
+
+function loungeBack() {
+  if (!lounge) return;
+  lounge.locked = null;
+  if (lounge.step === "back1") { cancelLounge(); return; }
+  if (lounge.step === "back2") {
+    lounge.a = null;
+    lounge.step = "back1";
+    dimBox.classList.add("hidden");
+  } else if (lounge.step === "depth") {
+    lounge.b = null;
+    lounge.depth = null;
+    lounge.step = "back2";
+    loungeOpenDim("back2");
+  } else if (lounge.step === "side") {
+    lounge.depth = null;
+    lounge.step = "depth";
+    loungeOpenDim("depth");
+  } else if (lounge.step === "width") {
+    lounge.wing = null;
+    lounge.side = null;
+    lounge.step = "side";
+    dimBox.classList.add("hidden");
+  }
+  log("lounge.back", { style: lounge.style, step: lounge.step });
+  emitMode();
+  updateLounge(lounge.lastClient);
+}
+
 // --- move command -----------------------------------------------------------------
 
 export function startMove(id = job.getSelectedId()) {
@@ -1323,6 +1720,7 @@ export function startMove(id = job.getSelectedId()) {
   cancelOrient();
   cancelNose();
   cancelBedBox();
+  cancelLounge();
   cancelPlane();
   endRetype(false);
   move = { id, step: "grab", pose0: { ...cab.pose }, before: job.snapshot(), grab: null, locked: { W: null, D: null, H: null }, ctx: null, target: null, clamped: [] };
@@ -1594,6 +1992,7 @@ export function startOrient(id = job.getSelectedId()) {
   cancelMove();
   cancelNose();
   cancelBedBox();
+  cancelLounge();
   cancelPlane();
   endRetype(false);
   const cab = id && job.getJob().cabinets.find((c) => c.id === id);
@@ -1782,6 +2181,8 @@ canvas.addEventListener("pointerdown", (e) => {
 
   if (bed) { finishBedBox("click"); return; }
 
+  if (lounge) { loungeClick(e); return; }
+
   if (move) {
     if (move.step === "grab") {
       const p = cursorPoint(e.clientX, e.clientY);
@@ -1878,6 +2279,7 @@ canvas.addEventListener("pointermove", (e) => {
 
   if (nose) return nose.step === "ready" ? noseHover(e) : updateNose(e);
   if (bed) return updateBedBox(e);
+  if (lounge) return updateLounge(e);
 
   if (move) {
     if (move.step === "grab") return hoverArmed(e, "Grab point");
@@ -1997,7 +2399,7 @@ canvas.addEventListener("pointercancel", endDrag);
 canvas.addEventListener("pointerleave", () => {
   if ((placing && !rb) || (move && move.step === "grab")) { hideSnapMarker(); hideFaceHint(); hideTip(); }
   if (orient) { const pend = pendingFace(); if (pend) showFaceHint(pend, { tone: "pending" }); else hideFaceHint(); hideTip(); }
-  if (nose || bed || cplane) hideTip();
+  if (nose || bed || cplane || lounge) hideTip();
 });
 
 function cursorFor(handle) {
@@ -2012,6 +2414,7 @@ function cursorFor(handle) {
   if (rb) positionDimInputs(placementBox());
   else if (nose && nose.step === "drag") positionDimInputs(noseBox());
   else if (bed) drawBedBox(null);
+  else if (lounge) { const b = loungeDimBox(); if (b) positionDimInputs(b); }
   else if (cplane && cplane.step === "offset") positionDimInputs(planeBox());
   else if (retype) updateRetype();
   else if (move && move.step === "drop") {
@@ -2036,6 +2439,12 @@ function typableDims() {
   if (cplane) return ["W"];
   if (nose) return ["D"];
   if (bed) return ["D"];
+  if (lounge) {
+    if (lounge.step === "back2") return ["W"];
+    if (lounge.step === "depth") return lounge.style === "I" ? ["D", "H"] : ["D"];
+    if (lounge.step === "width") return ["W", "H"];
+    return [];
+  }
   if (rb && rb.step === "face") return DIM_ORDER.filter((k) => AXIS_OF[k] !== rb.plane.axis);
   return DIM_ORDER;
 }
@@ -2070,6 +2479,21 @@ function currentDim(k) {
   if (cplane) return k === "W" ? cplane.offset : 0;
   if (nose) return k === "D" ? nose.D : 0;
   if (bed) return bed[k] ?? 0;
+  if (lounge) {
+    const pt = loungeFloor(lounge.lastClient);
+    if (k === "H") return loungeHeightNow();
+    if (k === "D") return loungeDepthLive(pt)?.depth || 0;
+    if (lounge.step === "width") {
+      const basis = lounge.b ? loungeBasis(lounge.a, lounge.b, lounge.roomSign || 1) : null;
+      const depth = lounge.depth || loungeDepthLive(pt)?.depth || 0;
+      return basis ? loungeExtra(pt, basis, depth) : 0;
+    }
+    if (lounge.a && pt) {
+      const b = loungeSecond(pt) || pt;
+      return Math.hypot(b.x - lounge.a.x, b.y - lounge.a.y);
+    }
+    return 0;
+  }
   if (move && move.step === "drop") { const d = movePose().delta; return { W: d.x, D: d.y, H: d.z }[k]; }
   if (retype) return retypeBox()[k];
   return 0;
@@ -2089,6 +2513,18 @@ function setTyped(k, v) {
     cplane.locked = v != null && v >= PLANE_MIN ? v : null;
     log("plane.typein", { value: dimInputs.W.value, locked: cplane.locked });
     updatePlane(null);
+  } else if (lounge) {
+    if (k === "H") {
+      lounge.height = v != null && v >= LOUNGE_MIN ? v : 420;
+      log("lounge.typein", { step: lounge.step, dim: "H", value: dimInputs.H.value, height: lounge.height });
+      updateLounge(lounge.lastClient);
+      return;
+    }
+    const key = lounge.step === "back2" || lounge.step === "width" ? "W" : lounge.step === "depth" ? "D" : null;
+    if (k !== key) return;
+    lounge.locked = v != null && v >= LOUNGE_MIN ? v : null;
+    log("lounge.typein", { step: lounge.step, value: dimInputs[k].value, locked: lounge.locked });
+    updateLounge(lounge.lastClient);
   } else if (bed) {
     if (k !== "D") return; // W and H come from the body
     const min = getModule(bed.moduleId).minSize.D;
@@ -2147,6 +2583,7 @@ for (const k of DIM_ORDER) {
       if (nose) finishNose("enter");
       else if (cplane) { if (cplane.step === "offset") finishPlane("enter"); }
       else if (bed) finishBedBox("enter");
+      else if (lounge) loungeConfirm("enter");
       else if (rb) finishPlacement("enter");
       else if (move) finishMove(e.ctrlKey);
       else if (retype) endRetype(true);
@@ -2155,6 +2592,7 @@ for (const k of DIM_ORDER) {
       if (nose) cancelNose();
       else if (cplane) cancelPlane();
       else if (bed) cancelBedBox();
+      else if (lounge) loungeBack();
       else if (rb) cancelPlacement();
       else if (move) cancelMove();
       else if (retype) endRetype(false);
@@ -2188,15 +2626,22 @@ window.addEventListener("keydown", (e) => {
     }
     return;
   }
-  const typing = rb || (move && move.step === "drop") || retype || nose || bed || (cplane && cplane.step === "offset");
+  const typing = rb || (move && move.step === "drop") || retype || nose || bed || lounge || (cplane && cplane.step === "offset");
 
   if (typing) {
-    if (e.key === "Tab") { e.preventDefault(); focusDim(focusedDim() || typableDims()[0]); return; }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const dims = typableDims();
+      if (!dims.length) return;
+      focusDim(focusedDim() || dims[0]);
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       if (nose) finishNose("enter");
       else if (cplane) finishPlane("enter");
       else if (bed) finishBedBox("enter");
+      else if (lounge) loungeConfirm("enter");
       else if (rb) finishPlacement("enter");
       else if (move) finishMove(e.ctrlKey);
       else endRetype(true);
@@ -2206,13 +2651,20 @@ window.addEventListener("keydown", (e) => {
       if (nose) cancelNose();
       else if (cplane) cancelPlane();
       else if (bed) cancelBedBox();
+      else if (lounge) loungeBack();
       else if (rb) cancelPlacement();
       else if (move) cancelMove();
       else endRetype(false);
       return;
     }
     // Typing a digit / sign jumps straight into the first open field.
-    if (/^[0-9.+\-*/]$/.test(e.key)) { const k = typableDims()[0]; focusDim(k); dimInputs[k].value = ""; return; }
+    if (/^[0-9.+\-*/]$/.test(e.key)) {
+      const dims = typableDims();
+      if (!dims.length) return;
+      focusDim(dims[0]);
+      dimInputs[dims[0]].value = "";
+      return;
+    }
     return;
   }
   if (e.key === "Escape") {

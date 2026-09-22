@@ -1,9 +1,10 @@
 /**
- * 休闲柜生成器 — cleanroom。docs/lounge-cleanroom-spec.md
- * 前脸在 y=0（房间），+Y 朝墙。U = 包围盒内三条 I。
- * 轮拱在墙侧 y∈[D−AD, D]；Parallel 中柜贴墙。
+ * 休闲柜。y=0 是房间，+Y 朝墙。
+ * 一条直段：前板在靠房间的一端，两侧板从前板后面直到柜背，顶板盖住整段。
+ * 顶板开口是段面正中的一半。下半层按开口挖，上半层再收进半个板厚。盖板坐在这圈台阶上。
+ * L 是转角：中间段贴着柜背，侧段从所选一端转 90° 伸进房间。侧段外侧面和中间段端头齐平，侧段靠墙一端和中间段柜背齐平。RIGHT 时侧段在 +X。
  */
-import { beginProvenance, dim, endProvenance, param } from "../_lib/dim.ts";
+import { beginProvenance, dim, endProvenance, param, ref } from "../_lib/dim.ts";
 import { attachFaces } from "../_lib/model.ts";
 import { recordBoardBox } from "../_lib/recordBox.ts";
 import { buildLoungeFaces } from "./faces.ts";
@@ -14,6 +15,7 @@ import type {
 import { RULES as R } from "./rules.ts";
 export {
   loungeFootprintBoxes,
+  loungeFromDrawnRun,
   loungeFromPolyline,
   loungePolyline,
   pointInFootprintBoxes,
@@ -50,6 +52,24 @@ function openingAndLid(
   const ox = r2(x0 + W / 4), oy = r2(y0 + D / 4);
   const ow = r2(W / 2), od = r2(D / 2);
   openings.push({ id: `${id}_opening`, x0: ox, y0: oy, width: ow, depth: od });
+  const top = boards.find((board) => board.id === `${id}_top`);
+  const rad = R.OPENING_RADIUS.value;
+  const step = r2(ppt / 2);
+  const holeX0 = ox, holeY0 = oy, holeX1 = r2(ox + ow), holeY1 = r2(oy + od);
+  if (top) {
+    top.profileVector = [
+      { x: top.x0, y: top.y0 }, { x: top.x1, y: top.y0 }, { x: top.x1, y: top.y1 },
+      { x: top.x0, y: top.y1 }, { x: top.x0, y: top.y0 },
+    ];
+    const mouth = roundedLoop(holeX0, holeY0, holeX1, holeY1, rad, true);
+    const through = roundedLoop(r2(holeX0 + step), r2(holeY0 + step), r2(holeX1 - step), r2(holeY1 - step), r2(rad - step), true);
+    top.profileHoles = [through];
+    const seat = r2(top.z0 + step);
+    top.slabs = [
+      { outline: top.profileVector, holes: [mouth], z0: top.z0, z1: seat },
+      { outline: top.profileVector, holes: [through], z0: seat, z1: top.z1 },
+    ];
+  }
   if (!lidOn) return;
   const c = R.LID_CLEARANCE_EACH_SIDE.value;
   lids.push({
@@ -57,18 +77,56 @@ function openingAndLid(
     width: r2(ow - 2 * c), depth: r2(od - 2 * c),
     holeDiameter: R.FINGER_HOLE_DIAMETER.value,
   });
-  boards.push(mkBoard(`${id}_lid`, "Lid", "lid", ppt, "XY", "Z",
-    ox + c, ox + ow - c, oy + c, oy + od - c, z0, z1));
+  const lid = mkBoard(`${id}_lid`, "Lid", "lid", ppt, "XY", "Z",
+    ox + c, ox + ow - c, oy + c, oy + od - c, z0, z1);
+  const lidRad = r2(rad - c);
+  const finger = circleHole((lid.x0 + lid.x1) / 2, (lid.y0 + lid.y1) / 2, R.FINGER_HOLE_DIAMETER.value);
+  lid.profileVector = roundedLoop(lid.x0, lid.y0, lid.x1, lid.y1, lidRad, false);
+  lid.profileHoles = [finger];
+  const tongue = roundedLoop(r2(lid.x0 + step), r2(lid.y0 + step), r2(lid.x1 - step), r2(lid.y1 - step), r2(lidRad - step), false);
+  const seat = r2(lid.z0 + step);
+  lid.slabs = [
+    { outline: tongue, holes: [finger], z0: lid.z0, z1: seat },
+    { outline: lid.profileVector, holes: [finger], z0: seat, z1: lid.z1 },
+  ];
+  boards.push(lid);
 }
 
-function lSupportProfile(depth: number, Hprime: number): { y: number; z: number }[] {
-  const L = r2(depth);
-  const leg = Math.min(R.L_LEG_WIDTH.value, L);
-  const strip = R.TOP_SUPPORT_STRIP_HEIGHT.value;
-  return [
-    { y: 0, z: 0 }, { y: 0, z: Hprime }, { y: L, z: Hprime },
-    { y: L, z: r2(Hprime - strip) }, { y: leg, z: r2(Hprime - strip) }, { y: leg, z: 0 }, { y: 0, z: 0 },
-  ];
+function arcPts(cx: number, cy: number, rad: number, a0: number, a1: number, steps = 4): { x: number; y: number }[] {
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const a = a0 + (a1 - a0) * (i / steps);
+    pts.push({ x: r2(cx + rad * Math.cos(a)), y: r2(cy + rad * Math.sin(a)) });
+  }
+  return pts;
+}
+
+/** Closed XY loop. Outer runs counter-clockwise; a hole runs clockwise. */
+function roundedLoop(x0: number, y0: number, x1: number, y1: number, rad: number, hole: boolean): { x: number; y: number }[] {
+  const r = Math.max(0, Math.min(rad, (x1 - x0) / 2, (y1 - y0) / 2));
+  if (r < 0.05) {
+    return hole
+      ? [{ x: x0, y: y0 }, { x: x0, y: y1 }, { x: x1, y: y1 }, { x: x1, y: y0 }, { x: x0, y: y0 }]
+      : [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }, { x: x0, y: y0 }];
+  }
+  const corners: Array<[number, number, number, number]> = hole
+    ? [
+      [x0 + r, y1 - r, Math.PI, Math.PI / 2],
+      [x1 - r, y1 - r, Math.PI / 2, 0],
+      [x1 - r, y0 + r, 0, -Math.PI / 2],
+      [x0 + r, y0 + r, -Math.PI / 2, -Math.PI],
+    ]
+    : [
+      [x0 + r, y0 + r, Math.PI, Math.PI * 1.5],
+      [x1 - r, y0 + r, Math.PI * 1.5, Math.PI * 2],
+      [x1 - r, y1 - r, 0, Math.PI * 0.5],
+      [x0 + r, y1 - r, Math.PI * 0.5, Math.PI],
+    ];
+  return corners.flatMap(([cx, cy, a0, a1]) => arcPts(cx, cy, r, a0, a1));
+}
+
+function circleHole(cx: number, cy: number, diameter: number): { x: number; y: number }[] {
+  return arcPts(cx, cy, diameter / 2, 0, -Math.PI * 2, 16);
 }
 
 function wallCutoutProfile(y0: number, y1: number, Hprime: number, AD: number, AH: number): { y: number; z: number }[] | undefined {
@@ -91,18 +149,36 @@ function addAvoidanceCovers(
     x0, x1, r2(D - AD), r2(D - AD + ppt), 0, r2(AH - ppt)));
 }
 
+/** 一条直段。前板在 y0，柜背在 y1，侧板夹在前板和柜背之间。 */
+function addRun(
+  ids: { key: string; front: string; left: string; right: string; top: string },
+  names: { front: string; left: string; right: string; top: string },
+  x0: number, x1: number, y0: number, y1: number,
+  H: number, ppt: number, Hprime: number,
+  lidOn: boolean, boards: Board[], openings: LoungeOpening[], lids: LoungeLid[],
+  cuts?: { left?: Board["profileVector"]; right?: Board["profileVector"]; omitLeft?: boolean; omitRight?: boolean },
+) {
+  const frontY1 = r2(y0 + ppt);
+  boards.push(mkBoard(ids.front, names.front, "front", ppt, "XZ", "Y", x0, x1, y0, frontY1, 0, Hprime));
+  if (!cuts?.omitLeft) boards.push(mkBoard(ids.left, names.left, "side", ppt, "YZ", "X", x0, r2(x0 + ppt), frontY1, y1, 0, Hprime, cuts?.left));
+  if (!cuts?.omitRight) boards.push(mkBoard(ids.right, names.right, "side", ppt, "YZ", "X", r2(x1 - ppt), x1, frontY1, y1, 0, Hprime, cuts?.right));
+  boards.push(mkBoard(ids.top, names.top, "top_panel", ppt, "XY", "Z", x0, x1, y0, y1, H - ppt, H));
+  openingAndLid(ids.key, x0, y0, r2(x1 - x0), r2(y1 - y0), H - ppt, H, ppt, lidOn, boards, openings, lids);
+}
+
 function addIRun(
   prefix: string, x0: number, x1: number, depth: number, H: number, ppt: number, Hprime: number,
   lidOn: boolean, boards: Board[], openings: LoungeOpening[], lids: LoungeLid[],
   wheel?: { AD: number; AH: number },
 ) {
-  const W = r2(x1 - x0);
   const cut = wheel ? wallCutoutProfile(ppt, depth, Hprime, wheel.AD, wheel.AH) : undefined;
-  boards.push(mkBoard(`${prefix}front`, "Front", "front", ppt, "XZ", "Y", x0, x1, 0, ppt, 0, Hprime));
-  boards.push(mkBoard(`${prefix}left_side`, "Left Side", "side", ppt, "YZ", "X", x0, x0 + ppt, ppt, depth, 0, Hprime, cut));
-  boards.push(mkBoard(`${prefix}right_side`, "Right Side", "side", ppt, "YZ", "X", x1 - ppt, x1, ppt, depth, 0, Hprime, cut));
-  boards.push(mkBoard(`${prefix}top`, "Top", "top_panel", ppt, "XY", "Z", x0, x1, 0, depth, H - ppt, H));
-  openingAndLid(prefix.replace(/_$/, "") || "i", x0, 0, W, depth, H - ppt, H, ppt, lidOn, boards, openings, lids);
+  const key = prefix.replace(/_$/, "") || "i";
+  addRun(
+    { key, front: `${prefix}front`, left: `${prefix}left_side`, right: `${prefix}right_side`, top: `${prefix}top` },
+    { front: "Front", left: "Left Side", right: "Right Side", top: "Top" },
+    x0, x1, 0, depth, H, ppt, Hprime, lidOn, boards, openings, lids,
+    { left: cut, right: cut },
+  );
   if (wheel && cut) addAvoidanceCovers(prefix, x0, x1, depth, wheel.AD, wheel.AH, ppt, boards);
 }
 
@@ -258,10 +334,21 @@ export function generateLounge(raw: LoungeParams): LoungeResult {
     const W = asNum(raw.mainWidth, 2000);
     const D = asNum(raw.mainDepth, 1600);
     const runD = asNum(raw.lDepth, 600);
-    footprint.main = { x0: 0, x1: W, y0: 0, y1: D };
+    if (!(runD < D && runD * 2 < W)) warnings.push("U: leg thickness must be less than the depth and half the width.");
+    const backY0 = r2(D - runD);
+    const midX0 = runD;
+    const midX1 = r2(W - runD);
+    footprint.left = { x0: 0, x1: runD, y0: 0, y1: D };
+    footprint.main = { x0: midX0, x1: midX1, y0: backY0, y1: D };
+    footprint.right = { x0: midX1, x1: W, y0: 0, y1: D };
     addIRun("left_", 0, runD, D, H, ppt, Hprime, lidOn, boards, openings, lids);
-    addIRun("back_", 0, W, runD, H, ppt, Hprime, lidOn, boards, openings, lids);
-    addIRun("right_", r2(W - runD), W, D, H, ppt, Hprime, lidOn, boards, openings, lids);
+    addRun(
+      { key: "back", front: "back_front", left: "back_left_side", right: "back_right_side", top: "back_top" },
+      { front: "Front", left: "Left Side", right: "Right Side", top: "Top" },
+      midX0, midX1, backY0, D, H, ppt, Hprime, lidOn, boards, openings, lids,
+      { omitLeft: true, omitRight: true },
+    );
+    addIRun("right_", midX1, W, D, H, ppt, Hprime, lidOn, boards, openings, lids);
   } else if (style === "PARALLEL") {
     const totalW = asNum(raw.totalWidth, 4000);
     const SW = asNum(raw.singleLoungeWidth, 1500);
@@ -280,53 +367,48 @@ export function generateLounge(raw: LoungeParams): LoungeResult {
   } else {
     const mainW = asNum(raw.mainWidth, 2000);
     const mainD = asNum(raw.mainDepth, 600);
-    const lW = asNum(raw.lWidth, 1600);
-    const lD = asNum(raw.lDepth, 800);
+    const ret = asNum(raw.lWidth, 1600);
+    const thick = asNum(raw.lDepth, 600);
     const right = (raw.lPosition ?? "RIGHT") !== "LEFT";
-    if (!(lW < mainW)) warnings.push("L: lWidth should be less than mainWidth.");
+    if (!(ret > mainD)) warnings.push("L: the return should extend past the middle front.");
+    if (!(thick < mainW)) warnings.push("L: return thickness should be less than the back length.");
     if (wheelOn) {
-      if (!(AD < Math.min(mainD, lD))) warnings.push("Avoidance Depth must be less than both run depths.");
+      if (!(AD < Math.min(mainD, ret - ppt))) warnings.push("Avoidance Depth must be less than the middle depth and the return.");
       if (!(AH < H - ppt)) warnings.push("Avoidance Height must be less than Height - PPT.");
     }
-    const visW = r2(mainW - lW);
-    const lX0 = right ? visW : 0;
-    const lX1 = right ? mainW : lW;
-    footprint.main = { x0: 0, x1: mainW, y0: 0, y1: mainD };
-    footprint.l = { x0: lX0, x1: lX1, y0: 0, y1: lD };
-
-    const frontW = visW;
-    const frontX0 = right ? 0 : lW;
-    boards.push(mkBoard("main_front", "Main Front", "front", ppt, "XZ", "Y",
-      frontX0, r2(frontX0 + frontW), 0, ppt, 0, Hprime));
-    boards.push(mkBoard("main_top", "Main Top", "top_panel", ppt, "XY", "Z",
-      frontX0, r2(frontX0 + frontW), 0, mainD, H - ppt, H));
-    openingAndLid("main", frontX0, 0, frontW, mainD, H - ppt, H, ppt, lidOn, boards, openings, lids);
-
-    const supportL = r2(mainD - ppt);
-    const prof = lSupportProfile(supportL, Hprime);
-    boards.push(mkBoard("main_left_l_piece", "Main Left L", "l_support_profile", ppt, "YZ", "X",
-      frontX0, r2(frontX0 + ppt), ppt, mainD, 0, Hprime, prof));
-    boards.push(mkBoard("main_right_l_piece", "Main Right L", "l_support_profile", ppt, "YZ", "X",
-      r2(frontX0 + frontW - ppt), r2(frontX0 + frontW), ppt, mainD, 0, Hprime, prof));
-
-    const lFrontW = r2(lW - ppt);
-    const lFrontX0 = right ? r2(lX0 + ppt) : lX0;
-    boards.push(mkBoard("l_front", "L Front", "front", ppt, "XZ", "Y",
-      lFrontX0, r2(lFrontX0 + lFrontW), 0, ppt, 0, Hprime));
-    const sideX0 = right ? lX0 : r2(lX1 - ppt);
-    const lCut = wheel ? wallCutoutProfile(0, lD, Hprime, AD, AH) : undefined;
-    boards.push(mkBoard("l_side", "L Side", "side", ppt, "YZ", "X",
-      sideX0, r2(sideX0 + ppt), 0, lD, 0, Hprime, lCut));
-    const stripH = R.TOP_SUPPORT_STRIP_HEIGHT.value;
-    const stripX0 = right ? r2(lX1 - ppt) : lX0;
-    boards.push(mkBoard("l_side_strip", "L Side Strip", "support_strip", ppt, "YZ", "X",
-      stripX0, r2(stripX0 + ppt), ppt, lD, r2(Hprime - stripH), Hprime));
-    boards.push(mkBoard("l_top", "L Top", "top_panel", ppt, "XY", "Z",
-      lX0, lX1, 0, lD, H - ppt, H));
-    openingAndLid("l", lX0, 0, lW, lD, H - ppt, H, ppt, lidOn, boards, openings, lids);
-    if (wheel && lCut) {
-      addAvoidanceCovers("l_", lX0, lX1, lD, AD, AH, ppt, boards);
-      addAvoidanceCovers("main_", frontX0, r2(frontX0 + frontW), mainD, AD, AH, ppt, boards);
+    const back = dim("lounge.back", { ret }, (t) => t.ret);
+    const mainY0 = dim("lounge.mainFront", { back: ref("lounge.back"), mainD }, (t) => t.back - t.mainD);
+    const mainX0 = right ? 0 : thick;
+    const mainX1 = right ? r2(mainW - thick) : mainW;
+    const lX0 = right ? mainX1 : 0;
+    const lX1 = right ? mainW : thick;
+    footprint.main = { x0: mainX0, x1: mainX1, y0: mainY0, y1: back };
+    footprint.l = { x0: lX0, x1: lX1, y0: 0, y1: back };
+    addRun(
+      { key: "main", front: "main_front", left: "main_left_side", right: "main_right_side", top: "main_top" },
+      { front: "Main Front", left: "Main Left Side", right: "Main Right Side", top: "Main Top" },
+      mainX0, mainX1, mainY0, back, H, ppt, Hprime, lidOn, boards, openings, lids,
+      right ? { omitRight: true } : { omitLeft: true },
+    );
+    const innerOnLeft = right;
+    const lCut = wheel ? wallCutoutProfile(ppt, back, Hprime, AD, AH) : undefined;
+    addRun(
+      {
+        key: "l", front: "l_front", top: "l_top",
+        left: innerOnLeft ? "l_side" : "l_outer_side",
+        right: innerOnLeft ? "l_outer_side" : "l_side",
+      },
+      {
+        front: "L Front", top: "L Top",
+        left: innerOnLeft ? "L Side" : "L Outer Side",
+        right: innerOnLeft ? "L Outer Side" : "L Side",
+      },
+      lX0, lX1, 0, back, H, ppt, Hprime, lidOn, boards, openings, lids,
+      { left: innerOnLeft ? lCut : undefined, right: innerOnLeft ? undefined : lCut },
+    );
+    if (lCut) {
+      addAvoidanceCovers("l_", lX0, lX1, back, AD, AH, ppt, boards);
+      addAvoidanceCovers("main_", mainX0, mainX1, back, AD, AH, ppt, boards);
     }
   }
 

@@ -1,10 +1,10 @@
 {
   "DEFAULT_HEIGHT": { "value": 420, "doc": "休闲柜总高缺省。" },
   "DEFAULT_PPT": { "value": 18, "doc": "统一板厚缺省。" },
-  "OPENING_RADIUS": { "value": 50, "doc": "顶板检修口圆角。" },
+  "OPENING_RADIUS": { "value": 50, "doc": "顶板正中开口的圆角。开口是段面的一半，上半层再收进半个板厚。" },
   "LID_CLEARANCE_EACH_SIDE": { "value": 1.5, "doc": "盖板四周单边缩量。" },
   "FINGER_HOLE_DIAMETER": { "value": 40, "doc": "盖板指孔径（贯通）。" },
-  "L_LEG_WIDTH": { "value": 100, "doc": "支撑 L 型两腿宽。" },
+  "L_LEG_WIDTH": { "value": 100, "doc": "旧 L 形腿宽。直段侧板现在是通高整板，不再用这个值。" },
   "TOP_SUPPORT_STRIP_HEIGHT": { "value": 100, "doc": "顶部支撑条高。" },
   "DEFAULT_AVOIDANCE_DEPTH": { "value": 300, "doc": "轮拱避让深缺省。" },
   "DEFAULT_AVOIDANCE_HEIGHT": { "value": 250, "doc": "轮拱避让高缺省。" },

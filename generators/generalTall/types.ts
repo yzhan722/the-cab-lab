@@ -4,9 +4,9 @@
  * 坐标：Cab Lab 一套最终柜体坐标（消掉 Fusion 三套 Y / core 事后平移）。
  * - y=0 前柜身，门 y∈[−FPT, 0]，墙侧 y = midDepth = CD − FPT（depth 含门厚）。
  * - 全部板的 x/y 一次写成装配位；轮廓与 bbox、槽/舌特征同一套数字。
- * - V1/V2 深 150（前段）；V3/V4 深 150（后段，贴墙）。
+ * - V1/V2 深 150，从 y=0 起；V3/V4 深 150，后缘贴 midDepth。四块立板都比门厚基准朝前一个门厚。
  * - 侧板 y∈[−FPT, midDepth]。毫米、Z 向上、x 左起。
- * 冰箱区与 style_1 / style_2 / mixed 端系统均按 Fusion 公式、Cab Lab 最终坐标实现。
+ * 端系统、立梃、横桥和避让都按这套接缝直接落位。
  */
 import type { Board as ModelBoard, Joint } from "../_lib/model.ts";
 

@@ -522,6 +522,54 @@ export function hideWidthRect() {
   widthFace.visible = false;
 }
 
+/** Up to three floor boxes plus an optional segment, for lounge placement. */
+const loungeSlots = [0x4f86e0, 0xf0c070, 0x9ec5d8].map((hex) => {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: 0.22, depthWrite: false }));
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: hex }));
+  mesh.visible = false;
+  edges.visible = false;
+  mesh.renderOrder = 25;
+  edges.renderOrder = 26;
+  scene.add(mesh, edges);
+  return { mesh, edges };
+});
+const loungeLineGeo = new THREE.BufferGeometry();
+loungeLineGeo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+const loungeLine = new THREE.Line(loungeLineGeo, new THREE.LineBasicMaterial({ color: 0xffffff }));
+loungeLine.visible = false;
+loungeLine.renderOrder = 27;
+scene.add(loungeLine);
+/** `boxes` are world AABBs {x0,y0,x1,y1,z0,z1}. `segment` is two floor points. */
+export function showLoungeGhost(boxes, segment = null) {
+  hideLoungeGhost();
+  (boxes || []).slice(0, loungeSlots.length).forEach((b, i) => {
+    const slot = loungeSlots[i];
+    const W = Math.max(b.x1 - b.x0, 1);
+    const D = Math.max(b.y1 - b.y0, 1);
+    const H = Math.max((b.z1 ?? 40) - (b.z0 ?? 0), 1);
+    for (const m of [slot.mesh, slot.edges]) {
+      m.visible = true;
+      m.scale.set(W, D, H);
+      m.position.set(b.x0 + W / 2, b.y0 + D / 2, (b.z0 ?? 0) + H / 2);
+    }
+  });
+  if (segment && segment.length === 2) {
+    const pos = loungeLineGeo.attributes.position;
+    pos.setXYZ(0, segment[0].x, segment[0].y, segment[0].z || 2);
+    pos.setXYZ(1, segment[1].x, segment[1].y, segment[1].z || 2);
+    pos.needsUpdate = true;
+    loungeLineGeo.computeBoundingSphere();
+    loungeLine.visible = true;
+  }
+}
+export function hideLoungeGhost() {
+  for (const slot of loungeSlots) {
+    slot.mesh.visible = false;
+    slot.edges.visible = false;
+  }
+  loungeLine.visible = false;
+}
+
 /** Nose-slab preview (Bedroom placement): the space's nose from Y = 0 to `depth`, full width, under the roof. */
 let noseGhost = null;
 export function showNoseGhost(resolved, depth, { clamped = false } = {}) {

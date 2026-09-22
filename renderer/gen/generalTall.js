@@ -79,6 +79,9 @@ function dim(key, terms, fn, options = {}) {
   active.entries[key] = { key, value, formula: formulaOf(fn, options.formula), terms: recorded };
   return value;
 }
+function same(key, of) {
+  return dim(key, { v: ref(of) }, (t) => t.v, { formula: `= ${of}` });
+}
 function defineRules(module, raw) {
   const out = {};
   for (const [name, r] of Object.entries(raw)) {
@@ -432,14 +435,14 @@ var rules_default = {
   BOTTOM_STYLE_1_MIN_FRONT_RAIL_HEIGHT: { value: 53, doc: "\u5E95\u7CFB\u7EDF style_1 \u8F68\u9AD8\u4E0B\u9650\u3002" },
   STYLE_1_SECOND_RAIL_THICKNESS: { value: 15, doc: "T2/B2 \u539A\uFF08\u5B57\u9762\u91CF\uFF0C\u4E0D\u968F CPT\uFF09\u3002" },
   STYLE_1_FIRST_RAIL_THICKNESS: { value: 16, doc: "T1/B1 \u539A\uFF08\u5B57\u9762\u91CF\uFF0C\u4E0D\u968F FPT\uFF09\u3002" },
-  STYLE_1_INSERT_FRONT_NOTCH_DEPTH: { value: 75, doc: "T3/B3 \u524D\u7F3A\u53E3\u6DF1\uFF08Y \u5411\uFF09\u3002" },
+  STYLE_1_INSERT_FRONT_NOTCH_DEPTH: { value: 75, doc: "T3/B3 \u524D\u8033\u6DF1\u5EA6\uFF08Y \u5411\uFF09\u3002\u524D\u6BB5\u5168\u5BBD\uFF0C\u505C\u5728\u7ACB\u6883\u53F0\u9636 y=80 \u4E4B\u524D\uFF1B\u5176\u540E\u5DE6\u53F3\u6536\u8FDB CPT\u3002" },
   STYLE_1_INSERT_BOARD_DEPTH: { value: 150, doc: "T3/B3 \u677F\u6DF1\u3002" },
   ZI_FULL_FRONT_REAR_NOTCH_DEPTH: { value: 105, doc: "full_zi \u524D\u540E\u7F3A\u53E3\u6DF1\u3002" },
   ZI_HALF_FRONT_NOTCH_DEPTH: { value: 45, doc: "half_zi \u524D\u7F3A\u53E3\u6DF1\u3002" },
   ZI_HALF_DEPTH: { value: 150, doc: "half_zi \u677F\u6DF1\u3002" },
   ZI_SLOT_CLEARANCE: { value: 1, doc: "Zi \u69FD\u9AD8\u4F59\u91CF\uFF08\u69FD\u9AD8 = ziT+1\uFF0C\u8FB9\u754C\u5FC3 \xB1(ziT+1)/2\uFF09\u3002" },
   ZI_SLOT_DEPTH: { value: 50, doc: "Zi \u69FD\u6DF1\uFF08\u6570\u636E\u5B57\u6BB5\uFF09\u3002" },
-  V12_Y_FRONT_FACE: { value: 70, doc: "V1/V2 \u5C40\u90E8 Y\uFF1A\u524D\u8138\u3002" },
+  V12_Y_FRONT_FACE: { value: 70, doc: "\u7ACB\u677F\u524D\u8138\u7684\u67DC\u4F53 y\u3002\u9876\u8F68 T2 \u540E\u7F18\u505C\u5728\u540C\u4E00\u6761\u7EBF\u4E0A\uFF0C\u4E24\u5757\u677F\u8D34\u4E0A\u3002" },
   V12_Y_STEP_INNER: { value: 80, doc: "V1/V2 \u5C40\u90E8 Y\uFF1A\u53F0\u9636\u3002" },
   V12_Y_REAR: { value: 150, doc: "V1/V2 \u5C40\u90E8 Y\uFF1A\u540E\u7F18\uFF08\u5C40\u90E8\u7CFB\uFF09\u3002" },
   V12_ZI_SLOT_INNER: { value: 100, doc: "V1/V2 Zi \u69FD\u5185\u7F18\uFF08\u69FD y\u2208[100,150]\uFF09\u3002" },
@@ -460,8 +463,8 @@ var rules_default = {
   H12_SPLIT_HEIGHT: { value: 300, doc: "\u62C6\u5206\u9608\u503C\uFF08\u2265300 \u62C6\u4E24\u6761\u5404 100\uFF0C<300 \u5355\u5757\u6574\u9AD8\uFF09\u3002" },
   H_SUPPORT_THICKNESS: { value: 15, doc: "H \u677F\u539A\u3002" },
   H_SUPPORT_HEIGHT: { value: 100, doc: "H \u677F\u9AD8\u3002" },
-  H_SUPPORT_SIDE_DEPTH_START: { value: 150, doc: "H13/H24 y \u8D77\u70B9\u3002" },
-  H_SUPPORT_SIDE_REAR_CLEARANCE: { value: 150, doc: "H13/H24 y \u7EC8\u70B9 = midDepth \u2212 150\u3002" },
+  H_SUPPORT_SIDE_DEPTH_START: { value: 150, doc: "\u5DE6\u53F3\u6A2A\u6865\u524D\u7AEF\u7684\u67DC\u4F53 y\u3002\u4E0D\u8DDF\u7ACB\u677F\u540E\u7F18\u8D70\u3002" },
+  H_SUPPORT_SIDE_REAR_CLEARANCE: { value: 150, doc: "\u5DE6\u53F3\u6A2A\u6865\u540E\u7F18 = midDepth \u2212 150\u3002" },
   H34_DEPTH: { value: 15, doc: "H34 \u677F\u6DF1\u3002" },
   V_AVOIDANCE_PARTIAL_FRONT_Y: { value: 70, doc: "V3/V4 partial \u907F\u8BA9\u524D\u89D2\uFF08ad \u2264 150\uFF09\u3002" },
   AVOIDANCE_SUPPORT_THICKNESS: { value: 15, doc: "\u907F\u8BA9\u652F\u6491\u677F\u539A\uFF08\u5B57\u9762\u91CF\uFF09\u3002" },
@@ -490,10 +493,10 @@ var rules_default = {
   STYLE_2_FRONT_SYSTEM_THICKNESS: { value: 15, doc: "TH1/BH1 \u539A\u3002" },
   STYLE_2_FRONT_SYSTEM_Z_INSET: { value: 1, doc: "TH1/BH1 \u8DDD\u9876/\u5E95 1 mm\uFF1Az\u2208[CH\u221216,CH\u22121] / [1,16]\u3002" },
   STYLE_2_END_NOTCH_DEPTH: { value: 105, doc: "V1/V2 style_2 \u7AEF\u7F3A\u53E3\u6DF1\uFF08Y \u5411\uFF09\u3002" },
-  T4_REAR_HORIZONTAL_DEPTH: { value: 100, doc: "T4 \u6DF1\uFF1Ay\u2208[midDepth\u2212116, midDepth\u221216]\u3002" },
+  T4_REAR_HORIZONTAL_DEPTH: { value: 100, doc: "T4 \u6DF1\uFF1A\u540E\u7F18\u8D34 T5 \u524D\u7AEF\uFF0C\u524D\u7F18\u518D\u9000 100\u3002T5 \u540E\u7F18\u5728\u4FA7\u677F\u540E\u7F18\u5185\u4FA7 1 mm\u3002" },
   T5_REAR_VERTICAL_HEIGHT: { value: 100, doc: "T5 \u9AD8\uFF1Az\u2208[CH\u2212100, CH]\u3002" },
   T45_THICKNESS: { value: 15, doc: "T4/T5 \u539A\u3002" },
-  T45_WALL_INSET: { value: 1, doc: "T5 \u8DDD\u5899 1 mm\uFF1Ay\u2208[midDepth\u221216, midDepth\u22121]\u3002" },
+  T45_WALL_INSET: { value: 1, doc: "T5 \u540E\u7F18 = midDepth\u22121\uFF0C\u505C\u5728\u4FA7\u677F\u540E\u7F18\u5185\u4FA7\u3002" },
   STACKING_HEIGHT_TOLERANCE: { value: 1e-3, doc: "\u9AD8\u5EA6\u5DEE > \u6B64\u503C \u2192 mismatch warning\u3002" }
 };
 
@@ -703,7 +706,7 @@ function mkBoard(id, name, category, boardType, thickness, kind, plane, axis, x0
     profileVector: profileVector ? profileVector.map((p) => ({ ...p })) : void 0
   };
 }
-function v12Profile(s, slots) {
+function v12Profile(s, slots, yOrigin) {
   const CH = s.CH;
   const tRear = RULES.V12_Y_REAR.value;
   const slotY = RULES.V12_ZI_SLOT_INNER.value;
@@ -744,7 +747,7 @@ function v12Profile(s, slots) {
   } else {
     pts.push([0, notchT], [notchD, notchT], [notchD, 0], [tRear, 0]);
   }
-  return yz(pts);
+  return yz(pts.map(([y, z]) => [y + yOrigin, z]));
 }
 function v34Profile(s, slots, warnings, yOff) {
   const CH = s.CH;
@@ -793,37 +796,39 @@ function v34Profile(s, slots, warnings, yOff) {
   return yz(pts.map(([y, z]) => [Y(y), z]));
 }
 function fullZiProfile(s) {
+  const x = (v) => r2(v + s.dx);
   const mw = s.midWidth, md = s.midDepth, nd = RULES.ZI_FULL_FRONT_REAR_NOTCH_DEPTH.value;
   return [
-    { x: s.CPT, y: 0 },
-    { x: s.CPT, y: nd },
-    { x: 0, y: nd },
-    { x: 0, y: r2(md - nd) },
-    { x: s.CPT, y: r2(md - nd) },
-    { x: s.CPT, y: md },
-    { x: r2(mw - s.CPT), y: md },
-    { x: r2(mw - s.CPT), y: r2(md - nd) },
-    { x: mw, y: r2(md - nd) },
-    { x: mw, y: nd },
-    { x: r2(mw - s.CPT), y: nd },
-    { x: r2(mw - s.CPT), y: 0 },
-    { x: s.CPT, y: 0 }
+    { x: x(s.CPT), y: 0 },
+    { x: x(s.CPT), y: nd },
+    { x: x(0), y: nd },
+    { x: x(0), y: r2(md - nd) },
+    { x: x(s.CPT), y: r2(md - nd) },
+    { x: x(s.CPT), y: md },
+    { x: x(mw - s.CPT), y: md },
+    { x: x(mw - s.CPT), y: r2(md - nd) },
+    { x: x(mw), y: r2(md - nd) },
+    { x: x(mw), y: nd },
+    { x: x(mw - s.CPT), y: nd },
+    { x: x(mw - s.CPT), y: 0 },
+    { x: x(s.CPT), y: 0 }
   ];
 }
 function halfZiProfile(s) {
+  const x = (v) => r2(v + s.dx);
   const mw = s.midWidth;
   const nd = RULES.ZI_HALF_FRONT_NOTCH_DEPTH.value;
   const dep = RULES.ZI_HALF_DEPTH.value;
   return [
-    { x: 0, y: 0 },
-    { x: 0, y: nd },
-    { x: s.CPT, y: nd },
-    { x: s.CPT, y: dep },
-    { x: r2(mw - s.CPT), y: dep },
-    { x: r2(mw - s.CPT), y: nd },
-    { x: mw, y: nd },
-    { x: mw, y: 0 },
-    { x: 0, y: 0 }
+    { x: x(0), y: 0 },
+    { x: x(0), y: nd },
+    { x: x(s.CPT), y: nd },
+    { x: x(s.CPT), y: dep },
+    { x: x(mw - s.CPT), y: dep },
+    { x: x(mw - s.CPT), y: nd },
+    { x: x(mw), y: nd },
+    { x: x(mw), y: 0 },
+    { x: x(0), y: 0 }
   ];
 }
 function generateGeneralTall(input) {
@@ -836,6 +841,19 @@ function generateGeneralTall(input) {
   warnings.push(...fridgeNotes);
   const P = param({ CH: s.CH, CW: s.CW, CD: s.CD, CPT: s.CPT, FPT: s.FPT });
   dim("tall.midDepth", { CD: P.CD, FPT: P.FPT }, (t) => t.CD - t.FPT);
+  const stileY0 = dim("tall.stileY0", { FPT: P.FPT }, () => 0);
+  const v12Rear = dim("tall.v12Rear", { y0: ref("tall.stileY0"), rear: RULES.V12_Y_REAR }, (t) => t.y0 + t.rear);
+  const railRear = dim("tall.railRear", { face: RULES.V12_Y_FRONT_FACE }, (t) => t.face);
+  const railY0 = dim("tall.railY0", {
+    rear: ref("tall.railRear"),
+    t1: RULES.STYLE_1_FIRST_RAIL_THICKNESS,
+    t2: RULES.STYLE_1_SECOND_RAIL_THICKNESS
+  }, (t) => t.rear - t.t1 - t.t2);
+  const t1Rear = dim("tall.t1Rear", { y0: ref("tall.railY0"), t1: RULES.STYLE_1_FIRST_RAIL_THICKNESS }, (t) => t.y0 + t.t1);
+  const t5Rear = dim("tall.t5Rear", { md: ref("tall.midDepth"), inset: RULES.T45_WALL_INSET }, (t) => t.md - t.inset);
+  const t5Front = dim("tall.t5Front", { rear: ref("tall.t5Rear"), t: RULES.T45_THICKNESS }, (t) => t.rear - t.t);
+  const hY0 = dim("tall.hY0", { y: RULES.H_SUPPORT_SIDE_DEPTH_START }, (t) => t.y);
+  const hY1 = dim("tall.hY1", { md: ref("tall.midDepth"), clear: RULES.H_SUPPORT_SIDE_REAR_CLEARANCE }, (t) => t.md - t.clear);
   const boards = [];
   const ziSlots = [];
   const ziGrooves = [];
@@ -878,8 +896,14 @@ function generateGeneralTall(input) {
   }
   const v12Slots = boundaries.filter((b) => b.boundaryType === "full_zi" || b.boundaryType === "half_zi").map((b) => ({ z0: r2(b.centerZ - (s.ziT + RULES.ZI_SLOT_CLEARANCE.value) / 2), z1: r2(b.centerZ + (s.ziT + RULES.ZI_SLOT_CLEARANCE.value) / 2), boundaryId: b.id }));
   const v34Slots = boundaries.filter((b) => b.boundaryType === "full_zi").map((b) => ({ z0: r2(b.centerZ - (s.ziT + RULES.ZI_SLOT_CLEARANCE.value) / 2), z1: r2(b.centerZ + (s.ziT + RULES.ZI_SLOT_CLEARANCE.value) / 2), boundaryId: b.id }));
-  const v12Y1 = RULES.V12_Y_REAR.value;
-  const v2X0 = s.rightT > 0 ? r2(s.CW - s.rightT) : r2(s.CW - CPT);
+  const sideY0 = FPT;
+  const sideY1 = r2(FPT + md);
+  const vLeftX0 = s.leftT;
+  const vLeftX1 = r2(s.leftT + CPT);
+  const vRightX1 = r2(s.CW - s.rightT);
+  const vRightX0 = r2(vRightX1 - CPT);
+  const v12Y0 = stileY0;
+  const v12Y1 = v12Rear;
   boards.push(mkBoard(
     "V1",
     "Front Stile Left",
@@ -889,13 +913,13 @@ function generateGeneralTall(input) {
     "carcass",
     "YZ",
     "X",
-    0,
-    CPT,
-    0,
+    vLeftX0,
+    vLeftX1,
+    v12Y0,
     v12Y1,
     0,
     CH,
-    v12Profile(s, v12Slots)
+    v12Profile(s, v12Slots, v12Y0)
   ));
   boards.push(mkBoard(
     "V2",
@@ -906,16 +930,16 @@ function generateGeneralTall(input) {
     "carcass",
     "YZ",
     "X",
-    v2X0,
-    r2(v2X0 + CPT),
-    0,
+    vRightX0,
+    vRightX1,
+    v12Y0,
     v12Y1,
     0,
     CH,
-    v12Profile(s, v12Slots)
+    v12Profile(s, v12Slots, v12Y0)
   ));
-  const v34Y0 = r2(Math.max(0, md - RULES.V34_Y_REAR.value));
-  const v34Y1 = md;
+  const v34Y0 = r2(stileY0 + Math.max(0, md - RULES.V34_Y_REAR.value));
+  const v34Y1 = r2(stileY0 + md);
   boards.push(mkBoard(
     "V3",
     "Rear Stile Left",
@@ -925,8 +949,8 @@ function generateGeneralTall(input) {
     "carcass",
     "YZ",
     "X",
-    0,
-    CPT,
+    vLeftX0,
+    vLeftX1,
     v34Y0,
     v34Y1,
     0,
@@ -942,8 +966,8 @@ function generateGeneralTall(input) {
     "carcass",
     "YZ",
     "X",
-    v2X0,
-    r2(v2X0 + CPT),
+    vRightX0,
+    vRightX1,
     v34Y0,
     v34Y1,
     0,
@@ -971,19 +995,25 @@ function generateGeneralTall(input) {
       "X",
       v5x0,
       v5x1,
-      0,
-      md,
+      sideY0,
+      sideY1,
       fridgeZoneItem.z0,
       fridgeZoneItem.z1,
-      yz([[0, 0], [md, 0], [md, fridgeZoneItem.height], [0, fridgeZoneItem.height], [0, 0]])
+      yz([
+        [sideY0, fridgeZoneItem.z0],
+        [sideY1, fridgeZoneItem.z0],
+        [sideY1, fridgeZoneItem.z1],
+        [sideY0, fridgeZoneItem.z1],
+        [sideY0, fridgeZoneItem.z0]
+      ])
     ));
     warnings.push(
       `Fridge zone ${fridgeZoneItem.zone.id}: V5 on ${v5OnLeft ? "left" : "right"} (exteriorSide=${s.exteriorSide}).`
     );
   }
   for (const sl of v12Slots) {
-    ziSlots.push({ id: `zi_slot_V1_${sl.boundaryId}`, vPanelId: "V1", y0: RULES.V12_ZI_SLOT_INNER.value, y1: RULES.V12_Y_REAR.value, z0: sl.z0, z1: sl.z1, depth: RULES.ZI_SLOT_DEPTH.value, boundaryId: sl.boundaryId });
-    ziSlots.push({ id: `zi_slot_V2_${sl.boundaryId}`, vPanelId: "V2", y0: RULES.V12_ZI_SLOT_INNER.value, y1: RULES.V12_Y_REAR.value, z0: sl.z0, z1: sl.z1, depth: RULES.ZI_SLOT_DEPTH.value, boundaryId: sl.boundaryId });
+    ziSlots.push({ id: `zi_slot_V1_${sl.boundaryId}`, vPanelId: "V1", y0: r2(v12Y0 + RULES.V12_ZI_SLOT_INNER.value), y1: r2(v12Y0 + RULES.V12_Y_REAR.value), z0: sl.z0, z1: sl.z1, depth: RULES.ZI_SLOT_DEPTH.value, boundaryId: sl.boundaryId });
+    ziSlots.push({ id: `zi_slot_V2_${sl.boundaryId}`, vPanelId: "V2", y0: r2(v12Y0 + RULES.V12_ZI_SLOT_INNER.value), y1: r2(v12Y0 + RULES.V12_Y_REAR.value), z0: sl.z0, z1: sl.z1, depth: RULES.ZI_SLOT_DEPTH.value, boundaryId: sl.boundaryId });
   }
   for (const sl of v34Slots) {
     ziSlots.push({
@@ -1014,14 +1044,14 @@ function generateGeneralTall(input) {
     const t2H = RULES.STYLE_1_SECOND_RAIL_THICKNESS.value;
     const insT = RULES.STYLE_1_INSERT_SLOT_THICKNESS.value;
     const insertProfile = () => [
-      { x: r2(dx + CPT), y: 0 },
-      { x: r2(dx + CPT), y: notch },
+      { x: dx, y: 0 },
       { x: dx, y: notch },
-      { x: dx, y: insDepth },
-      { x: r2(dx + mw), y: insDepth },
-      { x: r2(dx + mw), y: notch },
+      { x: r2(dx + CPT), y: notch },
+      { x: r2(dx + CPT), y: insDepth },
+      { x: r2(dx + mw - CPT), y: insDepth },
       { x: r2(dx + mw - CPT), y: notch },
-      { x: r2(dx + mw - CPT), y: 0 }
+      { x: r2(dx + mw), y: notch },
+      { x: r2(dx + mw), y: 0 }
     ];
     if (s.topSys.style === "style_1") {
       const topBand0 = r2(CH - s.topSys.railH);
@@ -1037,8 +1067,8 @@ function generateGeneralTall(input) {
         "Y",
         dx,
         r2(dx + mw),
-        0,
-        t1H,
+        railY0,
+        t1Rear,
         topRail0,
         CH,
         void 0
@@ -1054,12 +1084,16 @@ function generateGeneralTall(input) {
         "Y",
         dx,
         r2(dx + mw),
-        t1H,
-        r2(t1H + t2H),
+        t1Rear,
+        railRear,
         topRail0,
         CH,
         void 0
       ));
+      same("T1.y0", "tall.railY0");
+      same("T1.y1", "tall.t1Rear");
+      same("T2.y0", "tall.t1Rear");
+      same("T2.y1", "tall.railRear");
       boards.push(mkBoard(
         "T3",
         "Top Insert Board",
@@ -1131,8 +1165,8 @@ function generateGeneralTall(input) {
         "Y",
         dx,
         r2(dx + mw),
-        0,
-        t1H,
+        railY0,
+        t1Rear,
         0,
         botRail1,
         void 0
@@ -1148,12 +1182,16 @@ function generateGeneralTall(input) {
         "Y",
         dx,
         r2(dx + mw),
-        t1H,
-        r2(t1H + t2H),
+        t1Rear,
+        railRear,
         0,
         botRail1,
         void 0
       ));
+      same("B1.y0", "tall.railY0");
+      same("B1.y1", "tall.t1Rear");
+      same("B2.y0", "tall.t1Rear");
+      same("B2.y1", "tall.railRear");
       boards.push(mkBoard(
         "B3",
         "Bottom Insert Board",
@@ -1212,7 +1250,8 @@ function generateGeneralTall(input) {
       ));
     }
     const t45 = RULES.T45_THICKNESS.value;
-    const wallIn = RULES.T45_WALL_INSET.value;
+    const rearY1 = t5Rear;
+    const rearY0 = t5Front;
     boards.push(mkBoard(
       "T5",
       "T5 Rear Vertical Top Board",
@@ -1224,8 +1263,8 @@ function generateGeneralTall(input) {
       "Y",
       dx,
       r2(dx + mw),
-      r2(md - 16),
-      r2(md - wallIn),
+      rearY0,
+      rearY1,
       r2(CH - RULES.T5_REAR_VERTICAL_HEIGHT.value),
       CH,
       void 0
@@ -1241,27 +1280,38 @@ function generateGeneralTall(input) {
       "Z",
       dx,
       r2(dx + mw),
-      r2(md - 16 - RULES.T4_REAR_HORIZONTAL_DEPTH.value),
-      r2(md - 16),
+      r2(rearY0 - RULES.T4_REAR_HORIZONTAL_DEPTH.value),
+      rearY0,
       r2(CH - 16),
-      r2(CH - wallIn),
+      r2(CH - RULES.T45_WALL_INSET.value),
       void 0
     ));
+    same("T5.y0", "tall.t5Front");
+    same("T5.y1", "tall.t5Rear");
+    same("T4.y1", "tall.t5Front");
   }
-  const shortenZi = s.avoid.enabled && s.avoid.depth > 0 && s.avoid.height > 0 && s.avoid.depth < md;
+  const avoidShortY = r2(md - s.avoid.depth);
+  const isDividerSupportBoundary = (boundary) => {
+    const upperId = boundary.id.replace(/^boundary-/, "");
+    const upperIdx = s.zones.findIndex((z) => z.id === upperId);
+    if (upperIdx < 0) return false;
+    const hasDivider = (z) => z?.type === "double_door" && z.verticalDivider === true;
+    return hasDivider(s.zones[upperIdx]) || hasDivider(s.zones[upperIdx - 1]);
+  };
   for (const b of boundaries) {
     if (b.boundaryType === "none") continue;
     let type = b.boundaryType;
     let y1 = md;
     let prof;
+    const hitsAvoid = s.avoid.enabled && s.avoid.depth > 0 && s.avoid.height > 0 && s.avoid.depth < md && b.z0 < s.avoid.height && b.z1 > 0 && !isDividerSupportBoundary(b);
     if (type === "half_zi") {
       y1 = md;
       prof = halfZiProfile(s);
     } else {
       prof = fullZiProfile(s);
-      if (shortenZi) {
+      if (hitsAvoid) {
         type = "shortened_zi";
-        y1 = r2(md - s.avoid.depth);
+        y1 = avoidShortY;
         prof = fullZiProfile(s).map((p) => "y" in p && !("z" in p) ? { ...p, y: Math.min(p.y, y1) } : p);
       }
     }
@@ -1327,6 +1377,16 @@ function generateGeneralTall(input) {
       warnings.push(`H ${h.name} overlaps ${zi.boundaryType} ${zi.id}; Stage 2 movement evaluated.`);
     }
   }
+  let hBottomZ0;
+  let hBottomZ1;
+  if (s.avoid.enabled && s.avoid.height > 0) {
+    hBottomZ0 = dim("tall.hBottomZ0", { h: s.avoid.height }, (t) => t.h);
+    hBottomZ1 = dim("tall.hBottomZ1", { z0: ref("tall.hBottomZ0"), H: RULES.H_SUPPORT_HEIGHT }, (t) => t.z0 + t.H);
+    for (const h of hBottom) {
+      h.z0 = hBottomZ0;
+      h.z1 = hBottomZ1;
+    }
+  }
   for (const h of [...hTop, ...hBottom, ...hMid]) {
     if (h.name.startsWith("H13")) {
       boards.push(mkBoard(
@@ -1340,12 +1400,14 @@ function generateGeneralTall(input) {
         "X",
         dx,
         r2(dx + RULES.H_SUPPORT_THICKNESS.value),
-        RULES.H_SUPPORT_SIDE_DEPTH_START.value,
-        r2(md - RULES.H_SUPPORT_SIDE_REAR_CLEARANCE.value),
+        hY0,
+        hY1,
         h.z0,
         h.z1,
         void 0
       ));
+      same(`${h.name}.y0`, "tall.hY0");
+      same(`${h.name}.y1`, "tall.hY1");
     } else if (h.name.startsWith("H24")) {
       boards.push(mkBoard(
         h.name,
@@ -1358,12 +1420,14 @@ function generateGeneralTall(input) {
         "X",
         r2(dx + mw - RULES.H_SUPPORT_THICKNESS.value),
         r2(dx + mw),
-        RULES.H_SUPPORT_SIDE_DEPTH_START.value,
-        r2(md - RULES.H_SUPPORT_SIDE_REAR_CLEARANCE.value),
+        hY0,
+        hY1,
         h.z0,
         h.z1,
         void 0
       ));
+      same(`${h.name}.y0`, "tall.hY0");
+      same(`${h.name}.y1`, "tall.hY1");
     } else {
       boards.push(mkBoard(
         h.name,
@@ -1382,6 +1446,10 @@ function generateGeneralTall(input) {
         h.z1,
         void 0
       ));
+    }
+    if (hBottomZ0 != null && h.name.endsWith("_bottom")) {
+      same(`${h.name}.z0`, "tall.hBottomZ0");
+      same(`${h.name}.z1`, "tall.hBottomZ1");
     }
   }
   if (fridgeMode === "raised" && fridgeZoneItem) {
@@ -1406,12 +1474,14 @@ function generateGeneralTall(input) {
           "X",
           dx,
           r2(dx + RULES.H_SUPPORT_THICKNESS.value),
-          RULES.H_SUPPORT_SIDE_DEPTH_START.value,
-          r2(md - RULES.H_SUPPORT_SIDE_REAR_CLEARANCE.value),
+          hY0,
+          hY1,
           h.z0,
           h.z1,
           void 0
         ));
+        same(`${h.name}.y0`, "tall.hY0");
+        same(`${h.name}.y1`, "tall.hY1");
       } else if (h.name.startsWith("H24")) {
         boards.push(mkBoard(
           h.name,
@@ -1424,12 +1494,14 @@ function generateGeneralTall(input) {
           "X",
           r2(dx + mw - RULES.H_SUPPORT_THICKNESS.value),
           r2(dx + mw),
-          RULES.H_SUPPORT_SIDE_DEPTH_START.value,
-          r2(md - RULES.H_SUPPORT_SIDE_REAR_CLEARANCE.value),
+          hY0,
+          hY1,
           h.z0,
           h.z1,
           void 0
         ));
+        same(`${h.name}.y0`, "tall.hY0");
+        same(`${h.name}.y1`, "tall.hY1");
       } else {
         boards.push(mkBoard(
           h.name,
@@ -1526,16 +1598,34 @@ function generateGeneralTall(input) {
     const tongue = r2(CPT / 2 - RULES.DIVIDER_TONGUE_GROOVE_CLEARANCE.value);
     const ty0 = r2(md / 3), ty1 = r2(2 * md / 3);
     const h34CutY0 = r2(md - RULES.H34_CLEARANCE_DEPTH.value);
+    const rearBottomZ = r2(z0 - tongue);
+    const h34Cuts = [];
+    const h34Bands = boards.filter((board) => board.id.startsWith("H34")).map((board) => ({ z0: Math.max(board.z0, z0), z1: Math.min(board.z1, z1) })).filter((band) => band.z1 - band.z0 > EPS2).sort((a, b) => a.z0 - b.z0);
+    for (const band of h34Bands) {
+      const prev = h34Cuts[h34Cuts.length - 1];
+      if (prev && band.z0 <= prev.z1 + EPS2) prev.z1 = r2(Math.max(prev.z1, band.z1));
+      else h34Cuts.push({ z0: r2(band.z0), z1: r2(band.z1) });
+    }
+    const rear = [[md, rearBottomZ]];
+    let zCursor = rearBottomZ;
+    for (const cut of h34Cuts) {
+      const cz0 = r2(Math.max(cut.z0, zCursor));
+      const cz1 = r2(cut.z1);
+      if (cz1 <= zCursor + EPS2) continue;
+      if (cz0 > zCursor + EPS2) rear.push([md, cz0]);
+      rear.push([h34CutY0, cz0], [h34CutY0, cz1], [md, cz1]);
+      zCursor = cz1;
+    }
+    if (z1 > zCursor + EPS2) rear.push([md, z1]);
     const prof = yz([
-      [0, r2(z0 - tongue)],
-      [ty0, r2(z0 - tongue)],
+      [0, rearBottomZ],
+      [ty0, rearBottomZ],
       [ty0, z0],
       [ty1, z0],
-      [ty1, r2(z0 - tongue)],
-      [h34CutY0, r2(z0 - tongue)],
-      [h34CutY0, z1],
+      [ty1, rearBottomZ],
+      ...rear,
       [0, z1],
-      [0, r2(z0 - tongue)]
+      [0, rearBottomZ]
     ]);
     boards.push(mkBoard(
       vd.id,
@@ -1610,18 +1700,44 @@ function generateGeneralTall(input) {
     ));
   }
   const frontPanels = [];
+  const isOpenZone = (t) => t === "open_space" || t === "open_appliance" || t === "fridge";
   if (s.panelsOn) {
-    for (const zi of zoneItems) {
+    const frontZones = zoneItems.filter((zi) => PANEL_TYPES.has(zi.zone.type));
+    for (const zi of frontZones) {
       const zt = zi.zone.type;
-      if (!PANEL_TYPES.has(zt)) continue;
       const idx = zoneItems.indexOf(zi);
-      const below = zoneItems[idx - 1];
-      const above = zoneItems[idx + 1];
-      const belowHasPanel = !!below && PANEL_TYPES.has(below.zone.type);
-      const aboveHasPanel = !!above && PANEL_TYPES.has(above.zone.type);
-      let z0 = belowHasPanel ? r2(zi.z0 + s.fc / 2) : zi.z0;
-      let z1 = aboveHasPanel ? r2(zi.z1 - s.fc / 2) : zi.z1;
-      const x0 = dx, x1 = r2(dx + mw);
+      const next = zoneItems[idx + 1];
+      const belowBoundary = boundaries.find((b) => b.id === `boundary-${zi.zone.id}`);
+      const aboveBoundary = next ? boundaries.find((b) => b.id === `boundary-${next.zone.id}`) : void 0;
+      const below = belowBoundary ?? (idx === 0 ? botSys : zoneItems[idx - 1]);
+      const above = aboveBoundary ?? next ?? topSys;
+      const lowerZone = belowBoundary ? zoneItems[idx - 1] : void 0;
+      const upperZone = aboveBoundary ? next : void 0;
+      let z0;
+      let z1;
+      if (zi === frontZones[0] && below.kind === "bottom_system") {
+        z0 = s.botSys.style === "style_1" ? s.botSys.frontRail : r2(s.botSys.frontRail + s.fc);
+      } else if (below.kind === "boundary_panel") {
+        if (lowerZone && isOpenZone(lowerZone.zone.type)) z0 = r2(below.z0 + s.fc);
+        else z0 = r2(below.centerZ + s.fc / 2);
+      } else if (below.kind === "functional_zone") {
+        const belowZone = below;
+        z0 = belowZone.zone && PANEL_TYPES.has(belowZone.zone.type) ? r2(zi.z0 + s.fc / 2) : r2(zi.z0 + s.fc);
+      } else {
+        z0 = r2(zi.z0 + s.fc / 2);
+      }
+      if (zi === frontZones[frontZones.length - 1] && above.kind === "top_system") {
+        z1 = s.topSys.style === "style_1" ? r2(CH - s.topSys.frontRail) : r2(CH - s.topSys.frontRail - s.fc);
+      } else if (above.kind === "boundary_panel") {
+        if (upperZone && isOpenZone(upperZone.zone.type)) z1 = r2(above.z1 - s.fc);
+        else z1 = r2(above.centerZ - s.fc / 2);
+      } else if (above.kind === "functional_zone") {
+        const aboveZone = above;
+        z1 = aboveZone.zone && PANEL_TYPES.has(aboveZone.zone.type) ? r2(zi.z1 - s.fc / 2) : r2(zi.z1 - s.fc);
+      } else {
+        z1 = r2(zi.z1 - s.fc / 2);
+      }
+      const x0 = r2(s.leftT + s.fc), x1 = r2(s.CW - s.rightT - s.fc);
       if (zt === "double_door") {
         const mid = r2((x0 + x1) / 2);
         frontPanels.push({ id: `FP_${zi.zone.id}_L`, zone: zi, x0, x1: r2(mid - s.fc / 2), z0, z1, leaf: "L" });
@@ -1748,6 +1864,8 @@ function generateGeneralTall(input) {
   if (s.avoid.enabled && s.avoid.depth > 0 && s.avoid.height > RULES.AVOIDANCE_SUPPORT_THICKNESS.value) {
     const ad = s.avoid.depth, ah = s.avoid.height;
     const at = RULES.AVOIDANCE_SUPPORT_THICKNESS.value;
+    const avoidY0 = dim("tall.avoidY0", { md: ref("tall.midDepth"), ad }, (t) => t.md - t.ad);
+    const avoidY1 = dim("tall.avoidY1", { md: ref("tall.midDepth") }, (t) => t.md);
     boards.push(mkBoard(
       "avoidance_horizontal",
       "Avoidance Horizontal",
@@ -1759,12 +1877,14 @@ function generateGeneralTall(input) {
       "Z",
       dx,
       r2(dx + mw),
-      r2(md - ad),
-      md,
+      avoidY0,
+      avoidY1,
       r2(ah - at),
       ah,
       void 0
     ));
+    same("avoidance_horizontal.y0", "tall.avoidY0");
+    same("avoidance_horizontal.y1", "tall.avoidY1");
     boards.push(mkBoard(
       "Avoidance_Vertical",
       "Avoidance Vertical",
@@ -1776,8 +1896,8 @@ function generateGeneralTall(input) {
       "Y",
       dx,
       r2(dx + mw),
-      r2(md - ad),
-      r2(md - ad + at),
+      avoidY0,
+      r2(avoidY0 + at),
       0,
       r2(ah - at),
       void 0

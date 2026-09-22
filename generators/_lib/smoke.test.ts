@@ -138,8 +138,9 @@ function explode(name: string, result: { boards: Array<{ id: string; category?: 
   faceRefs("lounge", lounge);
   explode("lounge", lounge);
   const boxes = loungeFootprintBoxes(lounge.params, lounge);
-  assert.equal(pointInFootprintBoxes(200, 700, boxes), false, "L notch empty");
-  assert.ok(pointInFootprintBoxes(1200, 700, boxes), "L wing");
+  assert.equal(pointInFootprintBoxes(200, 100, boxes), false, "L notch empty");
+  assert.ok(pointInFootprintBoxes(200, 1200, boxes), "main run");
+  assert.ok(pointInFootprintBoxes(1600, 200, boxes), "L return");
   assert.equal(loungeFromPolyline([{ x: 0, y: 600 }, { x: 2000, y: 600 }]).params.style, "I_SHAPE");
   assert.equal(loungeFromPolyline([{ x: 0, y: 600 }, { x: 2000, y: 600 }, { x: 2000, y: 800 }]).params.style, "L_SHAPE");
   assert.equal(loungeFromPolyline([{ x: 0, y: 800 }, { x: 1500, y: 800 }, { x: 4000, y: 800 }]).params.style, "PARALLEL");
@@ -226,6 +227,10 @@ function explode(name: string, result: { boards: Array<{ id: string; category?: 
   assert.ok(html.includes('data-fp-tool="lounge"'), "Lounge tool button");
   const fp = readFileSync(join(root, "renderer", "floorplan.js"), "utf8");
   assert.ok(fp.includes("loungeFromPolyline"), "floorplan loungeFromPolyline");
+  const modulesSrc = readFileSync(join(root, "renderer", "modules.js"), "utf8");
+  assert.ok(modulesSrc.includes('lounge: "I"') && modulesSrc.includes('lounge: "L"') && !modulesSrc.includes('lounge: "U"'), "Lounge rail is I and L");
+  const interact = readFileSync(join(root, "renderer", "interact.js"), "utf8");
+  assert.ok(interact.includes("startLounge") && interact.includes("loungeFromDrawnRun"), "lounge draws in the 3D view");
   assert.ok(fp.includes('e.key === "g"'), "floorplan G shortcut");
   const c3 = readFileSync(join(root, "renderer", "cabinets3d.js"), "utf8");
   assert.ok(c3.includes("export function cabinetFootprints"), "cabinetFootprints");

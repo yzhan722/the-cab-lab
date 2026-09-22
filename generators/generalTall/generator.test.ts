@@ -1,6 +1,6 @@
 /**
  * GeneralTall 黄金测试 — 数值取自规格 §8（uiDefault / baseParams / H 用例 / 避让用例）。
- * 坐标：Cab Lab 一套最终柜体坐标（V1/V2 y∈[0,150]；V3/V4 贴墙；槽/舌 x 已含侧板）。
+ * 坐标：柜体最终位置。立梃前端 y=FPT，后缘可探出侧板；门左右让 fc。
  */
 import assert from "node:assert/strict";
 import { generateGeneralTall } from "./generator.ts";
@@ -51,7 +51,7 @@ const UI: GTParams = {
   assert.equal(r.stack.find((i) => i.id === "boundary-zone-2")!.boundaryType, "full_zi");
   assert.equal(r.stack.find((i) => i.id === "boundary-zone-3")!.boundaryType, "full_zi"); // 双门升级（本就 full）
 
-  // V1/V2：21 点轮廓；bbox 柜体 y∈[0,150]
+  // V1/V2：21 点轮廓；从 y=0 起，深 150。前脸 y=70，贴 T2 后缘。
   assert.deepEqual(place(r, "V1"), { x0: 0, x1: 16, y0: 0, y1: 150, z0: 0, z1: 2000 });
   assert.deepEqual(place(r, "V2"), { x0: 584, x1: 600, y0: 0, y1: 150, z0: 0, z1: 2000 });
   assert.deepEqual(b(r, "V1").profileVector, [
@@ -62,7 +62,7 @@ const UI: GTParams = {
     { y: 0, z: 69 }, { y: 80, z: 69 }, { y: 80, z: 53 }, { y: 70, z: 53 }, { y: 70, z: 0 },
   ]);
 
-  // V3/V4：17 点，柜体 Y（yOff = md−150 = 418）
+  // V3/V4：后缘 y = midDepth = 568（yOff = 418）
   assert.deepEqual(place(r, "V3"), { x0: 0, x1: 16, y0: 418, y1: 568, z0: 0, z1: 2000 });
   assert.deepEqual(b(r, "V3").profileVector, [
     { y: 418, z: 0 }, { y: 568, z: 0 }, { y: 568, z: 1895 }, { y: 552, z: 1895 },
@@ -72,15 +72,16 @@ const UI: GTParams = {
   ]);
 
   // 端系统：T1/T2 前轨 40；T3 插板 16 在轨下（堆叠顶带 1944–2000）
-  assert.deepEqual(place(r, "T1"), { x0: 0, x1: 600, y0: 0, y1: 16, z0: 1960, z1: 2000 });
+  assert.deepEqual(place(r, "T1"), { x0: 0, x1: 600, y0: 39, y1: 55, z0: 1960, z1: 2000 });
   assert.equal(b(r, "T1").materialThickness, 16);
-  assert.deepEqual(place(r, "T2"), { x0: 0, x1: 600, y0: 16, y1: 31, z0: 1960, z1: 2000 });
+  assert.deepEqual(place(r, "T2"), { x0: 0, x1: 600, y0: 55, y1: 70, z0: 1960, z1: 2000 });
   assert.deepEqual(place(r, "T3"), { x0: 0, x1: 600, y0: 0, y1: 150, z0: 1944, z1: 1960 });
   assert.deepEqual(b(r, "T3").profileVector, [
-    { x: 16, y: 0 }, { x: 16, y: 75 }, { x: 0, y: 75 }, { x: 0, y: 150 },
-    { x: 600, y: 150 }, { x: 600, y: 75 }, { x: 584, y: 75 }, { x: 584, y: 0 },
+    { x: 0, y: 0 }, { x: 0, y: 75 }, { x: 16, y: 75 }, { x: 16, y: 150 },
+    { x: 584, y: 150 }, { x: 584, y: 75 }, { x: 600, y: 75 }, { x: 600, y: 0 },
   ]);
-  assert.deepEqual(place(r, "B1"), { x0: 0, x1: 600, y0: 0, y1: 16, z0: 0, z1: 53 });
+  assert.deepEqual(b(r, "B3").profileVector, b(r, "T3").profileVector);
+  assert.deepEqual(place(r, "B1"), { x0: 0, x1: 600, y0: 39, y1: 55, z0: 0, z1: 53 });
   assert.deepEqual(place(r, "B3"), { x0: 0, x1: 600, y0: 0, y1: 150, z0: 53, z1: 69 });
 
   // H 支撑：mid 与 full_zi[984,999] 冲突移动（§8.8 推导）；uiDefault midDepth=568 → y[150,418]
@@ -100,7 +101,8 @@ const UI: GTParams = {
     assert.equal(Math.min(...prof.map((p) => p.z)), 991.5); // 底舌 = 999 − 7.5
     assert.ok(prof.some((p) => p.y === 189.333 && p.z === 999), "tongue y0 corner");
     assert.ok(prof.some((p) => p.y === 378.667 && p.z === 999), "tongue y1 corner");
-    assert.ok(prof.some((p) => p.y === 552), "h34 cut y edge"); // y 上限 midDepth−16
+    assert.ok(prof.some((p) => p.y === 552), "h34 overlap retreats to midDepth-16");
+    assert.ok(prof.some((p) => p.y === 568), "rear elsewhere stays at midDepth");
   }
 
   // zi_groove：仅贴 VD 的功能区边界（zone-3 上方是顶系统 → 无上边界）
@@ -127,18 +129,18 @@ const UI: GTParams = {
   // Zi 板 bbox：full_zi y[0, midDepth=568]
   assert.deepEqual(place(r, "Zi_boundary-zone-2"), { x0: 0, x1: 600, y0: 0, y1: 568, z0: 669, z1: 684 });
 
-  // frontPanels：zone-1 z[69,667.75]；zone-2 z[685.25,982.75]；zone-3 双叶 z[1000.25,1944]
-  assert.deepEqual(place(r, "FP_zone-1"), { x0: 0, x1: 600, y0: -16, y1: 0, z0: 69, z1: 667.75 });
-  assert.deepEqual(place(r, "FP_zone-2"), { x0: 0, x1: 600, y0: -16, y1: 0, z0: 685.25, z1: 982.75 });
-  assert.deepEqual(place(r, "FP_zone-3_L"), { x0: 0, x1: 298.75, y0: -16, y1: 0, z0: 1000.25, z1: 1944 });
-  assert.deepEqual(place(r, "FP_zone-3_R"), { x0: 301.25, x1: 600, y0: -16, y1: 0, z0: 1000.25, z1: 1944 });
+  // 门：左右让 2.5；底 style_1 下沿盖到 B3 底；顶 style_1 上沿盖到 T3 顶；门缝在边界心
+  assert.deepEqual(place(r, "FP_zone-1"), { x0: 2.5, x1: 597.5, y0: -16, y1: 0, z0: 53, z1: 675.25 });
+  assert.deepEqual(place(r, "FP_zone-2"), { x0: 2.5, x1: 597.5, y0: -16, y1: 0, z0: 677.75, z1: 990.25 });
+  assert.deepEqual(place(r, "FP_zone-3_L"), { x0: 2.5, x1: 298.75, y0: -16, y1: 0, z0: 992.75, z1: 1960 });
+  assert.deepEqual(place(r, "FP_zone-3_R"), { x0: 301.25, x1: 597.5, y0: -16, y1: 0, z0: 992.75, z1: 1960 });
 
-  // 铰链：zone-1 h=598.75 → sd=99.896 clamp 100 → 杯心 Z [667.75−100, 69+100]=[567.75,169]；铰链侧左
+  // 铰链：zone-1 高 622.25 → sd 夹到 100；杯心 X = 门左缘+22.5
   {
     const hs = r.hinges.filter((h) => h.panelId === "FP_zone-1");
     assert.equal(hs.length, 2);
-    assert.deepEqual(hs.map((h) => h.centerX), [22.5, 22.5]);
-    assert.deepEqual(hs.map((h) => r2(h.centerZ)).sort((a, c) => c - a), [567.854, 168.896]);
+    assert.deepEqual(hs.map((h) => h.centerX), [25, 25]);
+    assert.deepEqual(hs.map((h) => r2(h.centerZ)).sort((a, c) => c - a), [575.25, 153]);
     assert.equal(r.hinges.filter((h) => h.panelId === "FP_zone-2").length, 0); // 抽屉面板无铰链
   }
 
@@ -231,9 +233,9 @@ const UI: GTParams = {
   assert.deepEqual(place(r, "H24_mid"), { x0: 669, x1: 684, y0: 150, y1: 434, z0: 1000, z1: 1100 });
   assert.deepEqual(place(r, "H34_mid"), { x0: 31, x1: 669, y0: 569, y1: 584, z0: 1000, z1: 1100 });
   assert.equal(r.boards.filter((x) => x.id.startsWith("H")).length, 8); // 无 H34_top（黄金行为）
-  // V1/V2 与侧板共 X slab（§8.3）
-  assert.deepEqual(place(r, "V1"), { x0: 0, x1: 16, y0: 0, y1: 150, z0: 0, z1: 2100 });
-  assert.deepEqual(place(r, "V2"), { x0: 684, x1: 700, y0: 0, y1: 150, z0: 0, z1: 2100 });
+  // 立梃在侧板内侧，前端 y=FPT
+  assert.deepEqual(place(r, "V1"), { x0: 16, x1: 32, y0: 0, y1: 150, z0: 0, z1: 2100 });
+  assert.deepEqual(place(r, "V2"), { x0: 668, x1: 684, y0: 0, y1: 150, z0: 0, z1: 2100 });
   assert.deepEqual(place(r, "SidePanel_L"), { x0: 0, x1: 16, y0: -16, y1: 584, z0: 0, z1: 2100 });
   // 声明：骨架 4 + 侧板 2 + T4/T5
   assert.ok(r.joints.some((j) => j.id === "gt_sidepanel_l_v1"));
@@ -260,20 +262,23 @@ const UI: GTParams = {
     avoidance: { enabled: true, depth: 200, height: 400 },
   });
   assert.deepEqual(r.validation.errors, []);
+  assert.deepEqual(place(r, "H13_bottom"), { x0: 16, x1: 31, y0: 150, y1: 418, z0: 400, z1: 500 });
+  assert.deepEqual(place(r, "H24_bottom"), { x0: 569, x1: 584, y0: 150, y1: 418, z0: 400, z1: 500 });
+  assert.deepEqual(place(r, "H34_bottom"), { x0: 31, x1: 569, y0: 553, y1: 568, z0: 400, z1: 500 });
   assert.deepEqual(place(r, "avoidance_horizontal"), { x0: 16, x1: 584, y0: 368, y1: 568, z0: 385, z1: 400 });
   assert.deepEqual(place(r, "Avoidance_Vertical"), { x0: 16, x1: 584, y0: 368, y1: 383, z0: 0, z1: 385 });
-  // shortened_zi：full_zi 缩深 y[0, md−ad=368]
+  // 避让高 400，边界在 z=669，不缩短
   {
     const zi = b(r, "Zi_boundary-zone-2");
-    assert.equal(zi.boardType, "shortened_zi");
-    assert.equal(zi.y1, 368);
+    assert.equal(zi.boardType, "full_zi");
+    assert.equal(zi.y1, 568);
   }
   // 侧板缺口：柜体 Y，后墙 midDepth=568
   assert.deepEqual(b(r, "SidePanel_L").profileVector, [
     { y: -16, z: 0 }, { y: 368, z: 0 }, { y: 368, z: 400 }, { y: 568, z: 400 },
     { y: 568, z: 2000 }, { y: -16, z: 2000 },
   ]);
-  // V3/V4 full 避让（ad=200 > 150）：底边抬到 400，Y 已加 yOff=418
+  // V3/V4 full 避让（ad=200 > 150）：底边抬到 400，后缘 y=FPT+midDepth
   {
     const prof = b(r, "V3").profileVector as { y: number; z: number }[];
     assert.equal(prof[0].y, 418);
@@ -392,8 +397,8 @@ function hasPoint(prof: { y: number; z: number }[] | undefined, y: number, z: nu
   const v5Right = left.boards.find((b) => b.id === "V5")!;
   assert.ok(v5Right.x0 > 300, "V5 opposite exterior left → right half");
   assert.ok(left.boards.some((b) => b.id === "SidePanel_L"));
-  assert.equal(v5Right.y0, 0);
-  assert.equal(v5Right.y1, left.params.midDepth);
+  assert.equal(v5Right.y0, 16);
+  assert.equal(v5Right.y1, left.params.midDepth + 16);
 
   const raised = fridge({
     avoidance: { enabled: true, depth: 200, height: 20 },

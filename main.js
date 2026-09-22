@@ -2,6 +2,29 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
+// A second launch used to open another Chromium on the same profile. It then
+// failed to bind the debug port and could not take the disk cache, and the
+// new window quit. Keep one instance and surface the window that is already open.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.exit(0);
+}
+
+function focusExistingWindows() {
+  const windows = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed());
+  const main = windows.find((win) => win.getTitle() === "The Cab Lab") || windows[0];
+  if (!main) return;
+  if (main.isMinimized()) main.restore();
+  main.show();
+  main.focus();
+}
+
+if (gotSingleInstanceLock) {
+  app.on("second-instance", () => {
+    focusExistingWindows();
+  });
+}
+
 const JOB_FILTERS = [{ name: "Cab Lab job", extensions: ["json"] }];
 const DXF_FILTERS = [{ name: "DXF drawing", extensions: ["dxf"] }];
 
@@ -312,6 +335,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
   createWindow();
   // CABLAB_BENCH=1 (or =<moduleId>) opens the bench alongside the app.
   const flag = process.env.CABLAB_BENCH;

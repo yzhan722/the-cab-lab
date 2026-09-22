@@ -1,7 +1,7 @@
 /**
  * 休闲柜组（Lounge）— I / L / U / Parallel。
- * 坐标：Cab Lab 前脸 −Y。y=0 房间侧前柜身，+Y 朝墙；前板 y∈[0, ppt]。
- * 行为：docs/lounge-cleanroom-spec.md。
+ * 坐标：y=0 房间，+Y 朝墙。直段前板在该段靠房间的一端。
+ * L 是转角。中间段沿柜背，侧段从一端转进房间。U 是两端都转出去。
  */
 import type { Board as ModelBoard, Joint } from "../_lib/model.ts";
 

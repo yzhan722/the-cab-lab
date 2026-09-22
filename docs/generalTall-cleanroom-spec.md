@@ -107,7 +107,7 @@
 | avoidance_support | Avoidance_Vertical | 15 | XZ/Y | x 同上；y[CD−avoidDepth, CD−avoidDepth+15]；z[0, avoidH−15] |
 | top_system (style_1) | T1 前轨 | 16 | XZ/Y | x core[0,midWidth]；y[0,16]；z[CH−railH, CH] |
 | top_system (style_1) | T2 二轨 | 15 | XZ/Y | y[16,31]；z 同 T1 |
-| top_system (style_1) | T3 插板 | CPT | XY/Z | x core[0,midWidth]；y[0,150]；z[CH−railH−16, CH−railH]；轮廓 [[CPT,0],[CPT,75],[0,75],[0,150],[midWidth,150],[midWidth,75],[midWidth−CPT,75],[midWidth−CPT,0]]（缺口宽跟 CPT） |
+| top_system (style_1) | T3 插板 | CPT | XY/Z | x core[0,midWidth]；y[0,150]；z[CH−railH−16, CH−railH]；轮廓 [[0,0],[0,75],[CPT,75],[CPT,150],[midWidth−CPT,150],[midWidth−CPT,75],[midWidth,75],[midWidth,0]]（前耳全宽，后段左右收进 CPT，避开立梃台阶） |
 | bottom_system (style_1) | B1/B2/B3 | 16/15/CPT | XZ/Y·XY/Z | B1 y[0,16] z[0,railH]；B2 y[16,31]；B3 y[0,150] z[railH, railH+16]，轮廓同 T3 |
 | top_system (style_2) | TH1 固定前脸 | 15 | XY/Z | y[0,100]；z[CH−sysH+1, CH−1]（实测 [2084,2099]，15 厚留 1 mm 缝） |
 | top_system (style_2) | T4 顶盖 | 15 | XY/Z | y[midDepth−100, midDepth]；z[CH−sysH+1, CH−1]（[484,584]×[2084,2099]） |
@@ -315,7 +315,7 @@ baseParams 5 区链（stackingCalculator 直测，CH2100、mismatch −30 警告
 ### 8.4 端系统（baseParams CH2100）
 
 - style_1 z：T1/T2 [2060,2100]、T3 [2044,2060]、B1/B2 [0,53]、B3 [53,69]；自定义轨高 70/80：T1/T2 [2030,2100]、T3 [2014,2030]、B1/B2 [0,80]、B3 [80,96]。
-- T3/B3（CW700 双 16 侧板，midWidth 668）：x[16,684]（=leftT..leftT+midWidth）、y[0,150]；profile `[[16,0],[16,75],[0,75],[0,150],[668,150],[668,75],[652,75],[652,0]]`（缺口宽 = CPT16）；T1/T2/B1/B2 无 profileVector。
+- T3/B3（CW700 双 16 侧板，midWidth 668）：x[16,684]（=leftT..leftT+midWidth）、y[0,150]；profile `[[16,0],[16,75],[32,75],[32,150],[668,150],[668,75],[684,75],[684,0]]`（前耳全宽，后段收进 CPT16）；T1/T2/B1/B2 无 profileVector。
 - 厚度：T1=16、T2=15、T3=CPT16、B1=16、B2=15、B3=CPT16。
 - style_2（baseParams CH2100，顶 100/底 100）：TH1 [0,664, 0,100, 2084,2099]；T4 [0,664, 484,584, 2084,2099]；T5 [0,664, 584,599, 2000,2100]；BH1 [0,664, 0,100, 1,16]；不生成 T3/B3 及其特征。
 

@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateLounge } from "./generator.ts";
 import { checkPins, countPins, type PresetsFile } from "../_lib/pins.ts";
-import { loungeFootprintBoxes, loungeFromPolyline, loungePolyline, pointInFootprintBoxes } from "./place.ts";
+import { loungeFootprintBoxes, loungeFromDrawnRun, loungeFromPolyline, loungePolyline, pointInFootprintBoxes } from "./place.ts";
 
 const r2 = (v: number) => Math.round(v * 1000) / 1000;
 function b(id: string) {
@@ -28,14 +28,15 @@ const r = generateLounge({
   mainWidth: 2000,
   mainDepth: 600,
   lWidth: 1600,
-  lDepth: 800,
+  lDepth: 600,
   lPosition: "RIGHT",
   topLidEnabled: true,
 });
 
 assert.equal(r.validation.errors.length, 0);
-assert.deepEqual(r.footprint.l, { x0: 400, x1: 2000, y0: 0, y1: 800 });
-assert.equal(r.boards.filter((x) => x.boardType !== "lid").length, 8);
+assert.deepEqual(r.footprint.l, { x0: 1400, x1: 2000, y0: 0, y1: 1600 });
+assert.deepEqual(r.footprint.main, { x0: 0, x1: 1400, y0: 1000, y1: 1600 });
+assert.equal(r.boards.filter((x) => x.boardType !== "lid").length, 7);
 assert.equal(r.lids.length, 2);
 assert.equal(r.openings.length, 2);
 assert.ok(r.joints.some((j) => j.id === "lg_main_front_to_top"));
@@ -43,19 +44,20 @@ assert.ok(r.joints.some((j) => j.id === "lg_l_front_to_top"));
 assert.ok(r.joints.some((j) => j.id === "lg_l_side_to_top"));
 assert.equal(b("main_front").category, "front_panel");
 
-assert.deepEqual(place("main_front"), { x0: 0, x1: 400, y0: 0, y1: 18, z0: 0, z1: 402 });
-assert.deepEqual(place("l_front"), { x0: 418, x1: 2000, y0: 0, y1: 18, z0: 0, z1: 402 });
-assert.deepEqual(place("l_side"), { x0: 400, x1: 418, y0: 0, y1: 800, z0: 0, z1: 402 });
-assert.deepEqual(place("l_side_strip"), { x0: 1982, x1: 2000, y0: 18, y1: 800, z0: 302, z1: 402 });
-assert.deepEqual(b("main_left_l_piece").profileVector, [
-  { y: 0, z: 0 }, { y: 0, z: 402 }, { y: 582, z: 402 }, { y: 582, z: 302 },
-  { y: 100, z: 302 }, { y: 100, z: 0 }, { y: 0, z: 0 },
-]);
+assert.deepEqual(place("main_front"), { x0: 0, x1: 1400, y0: 1000, y1: 1018, z0: 0, z1: 402 });
+assert.deepEqual(place("l_front"), { x0: 1400, x1: 2000, y0: 0, y1: 18, z0: 0, z1: 402 });
+assert.deepEqual(place("l_side"), { x0: 1400, x1: 1418, y0: 18, y1: 1600, z0: 0, z1: 402 });
+assert.deepEqual(place("l_outer_side"), { x0: 1982, x1: 2000, y0: 18, y1: 1600, z0: 0, z1: 402 });
+assert.deepEqual(place("main_left_side"), { x0: 0, x1: 18, y0: 1018, y1: 1600, z0: 0, z1: 402 });
+assert.equal(r.boards.find((x) => x.id === "main_right_side"), undefined);
+assert.equal(b("main_left_side").profileVector, undefined);
+assert.ok(b("main_top").profileHoles && b("main_top").profileHoles!.length === 1, "top opening is cut");
+assert.ok(b("main_lid").profileHoles && b("main_lid").profileHoles!.length === 1, "lid finger hole is cut");
 
 const op = r.openings.find((o) => o.id === "main_opening")!;
-assert.deepEqual([op.width, op.depth], [200, 300]);
+assert.deepEqual([op.width, op.depth], [700, 300]);
 const lid = r.lids.find((o) => o.id === "main_lid")!;
-assert.deepEqual([r2(lid.width), r2(lid.depth)], [197, 297]);
+assert.deepEqual([r2(lid.width), r2(lid.depth)], [697, 297]);
 assert.equal(lid.holeDiameter, 40);
 assert.equal(r.debug?.boardFrame, "final");
 
@@ -104,9 +106,9 @@ assert.equal(par.boards.find((x) => x.id === "right_front")?.category, "front_pa
     style: "L_SHAPE", mainWidth: 2000, mainDepth: 600, lWidth: 1600, lDepth: 800, lPosition: "RIGHT",
   }, r);
   assert.equal(boxes.length, 2);
-  assert.ok(pointInFootprintBoxes(200, 300, boxes), "main leg");
-  assert.ok(pointInFootprintBoxes(1200, 700, boxes), "L wing");
-  assert.equal(pointInFootprintBoxes(200, 700, boxes), false, "L notch is empty");
+  assert.ok(pointInFootprintBoxes(200, 1200, boxes), "main leg against the back wall");
+  assert.ok(pointInFootprintBoxes(1600, 200, boxes), "return toward the room");
+  assert.equal(pointInFootprintBoxes(200, 100, boxes), false, "the near-left notch is empty");
   const poly = loungePolyline({ style: "L_SHAPE", mainWidth: 2000, mainDepth: 600, lWidth: 1600, lDepth: 800, lPosition: "RIGHT" });
   assert.equal(poly.length, 3);
 
@@ -137,6 +139,39 @@ assert.equal(par.boards.find((x) => x.id === "right_front")?.category, "front_pa
   assert.equal(uPlace.params.style, "U_SHAPE");
   assert.equal(uPlace.params.mainWidth, 2000);
   assert.equal(uPlace.params.mainDepth, 1600);
+
+  const drawnI = loungeFromDrawnRun({
+    a: { x: 0, y: 800 }, b: { x: 2000, y: 800 }, depth: 600, roomSign: 1, style: "I", height: 420,
+  });
+  assert.equal(drawnI.params.mainWidth, 2000);
+  assert.equal(drawnI.params.mainDepth, 600);
+  assert.deepEqual(drawnI.pose, { x: 0, y: 200, z: 0, rotZ: 0 });
+
+  const drawnRev = loungeFromDrawnRun({
+    a: { x: 2000, y: 800 }, b: { x: 0, y: 800 }, depth: 600, roomSign: -1, style: "I", height: 420,
+  });
+  assert.deepEqual(drawnRev.pose, { x: 0, y: 200, z: 0, rotZ: 0 });
+  assert.equal(drawnRev.params.mainWidth, 2000);
+
+  const drawnRight = loungeFromDrawnRun({
+    a: { x: 0, y: 800 }, b: { x: 400, y: 800 }, depth: 600, roomSign: 1,
+    style: "L", side: "RIGHT", wing: 1600, height: 420,
+  });
+  assert.equal(drawnRight.params.style, "L_SHAPE");
+  assert.equal(drawnRight.params.lPosition, "RIGHT");
+  assert.equal(drawnRight.params.mainWidth, 400);
+  assert.equal(drawnRight.params.lWidth, 1600);
+  assert.equal(drawnRight.params.mainDepth, 600);
+  assert.equal(drawnRight.params.lDepth, 600);
+  assert.deepEqual(drawnRight.pose, { x: 0, y: -800, z: 0, rotZ: 0 });
+
+  const drawnLeft = loungeFromDrawnRun({
+    a: { x: 1600, y: 800 }, b: { x: 2000, y: 800 }, depth: 600, roomSign: 1,
+    style: "L", side: "LEFT", wing: 1600, height: 420,
+  });
+  assert.equal(drawnLeft.params.lPosition, "LEFT");
+  assert.equal(drawnLeft.params.mainWidth, 400);
+  assert.deepEqual(drawnLeft.pose, { x: 1000, y: -800, z: 0, rotZ: 0 });
 }
 
 /* ---------- I / L / Parallel 轮拱在墙侧 y∈[D−AD, D] + Parallel 中柜 ---------- */
@@ -163,7 +198,7 @@ assert.equal(par.boards.find((x) => x.id === "right_front")?.category, "front_pa
     wheelAvoidanceEnabled: true, avoidanceDepth: 300, avoidanceHeight: 250,
   });
   const lTop = lw.boards.find((x) => x.id === "l_avoidance_top")!;
-  assert.deepEqual({ y0: Math.round(lTop.y0), y1: Math.round(lTop.y1) }, { y0: 500, y1: 800 });
+  assert.deepEqual({ y0: Math.round(lTop.y0), y1: Math.round(lTop.y1) }, { y0: 1300, y1: 1600 });
   assert.ok(lw.boards.some((x) => x.id === "main_avoidance_top"));
 
   const pw = generateLounge({

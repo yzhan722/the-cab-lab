@@ -54,14 +54,16 @@ function boxesFromParams(p: LoungeParams): LoungeBox[] {
   }
   const mainW = asNum(p.mainWidth, 2000);
   const mainD = asNum(p.mainDepth, 600);
-  const lW = asNum(p.lWidth, 1600);
-  const lD = asNum(p.lDepth, 800);
+  const ret = asNum(p.lWidth, 1600);
+  const thick = asNum(p.lDepth, 600);
   const right = (p.lPosition ?? "RIGHT") !== "LEFT";
-  const lX0 = right ? r2(mainW - lW) : 0;
-  const lX1 = right ? mainW : lW;
+  const mainX0 = right ? 0 : thick;
+  const mainX1 = right ? r2(mainW - thick) : mainW;
+  const lX0 = right ? mainX1 : 0;
+  const lX1 = right ? mainW : thick;
   return [
-    { id: "main", x0: 0, x1: mainW, y0: 0, y1: mainD },
-    { id: "l", x0: lX0, x1: lX1, y0: 0, y1: lD },
+    { id: "main", x0: mainX0, x1: mainX1, y0: r2(ret - mainD), y1: ret },
+    { id: "l", x0: lX0, x1: lX1, y0: 0, y1: ret },
   ];
 }
 
@@ -104,11 +106,100 @@ export function loungePolyline(params: LoungeParams): Array<{ x: number; y: numb
     return [{ x: 0, y: D }, { x: SW, y: D }, { x: totalW, y: D }];
   }
   const mainW = asNum(params.mainWidth, 2000);
-  const mainD = asNum(params.mainDepth, 600);
-  const lD = asNum(params.lDepth, 800);
+  const ret = asNum(params.lWidth, 1600);
   const right = (params.lPosition ?? "RIGHT") !== "LEFT";
-  if (right) return [{ x: 0, y: mainD }, { x: mainW, y: mainD }, { x: mainW, y: lD }];
-  return [{ x: 0, y: lD }, { x: 0, y: mainD }, { x: mainW, y: mainD }];
+  if (right) return [{ x: 0, y: ret }, { x: mainW, y: ret }, { x: mainW, y: 0 }];
+  return [{ x: 0, y: 0 }, { x: 0, y: ret }, { x: mainW, y: ret }];
+}
+
+/**
+ * Floor-plan drawing → params + pose.
+ * `a`→`b` is the middle cabinet's back edge. Depth is into the room.
+ * roomSign +1 means the room is to the right of a→b; −1 flips the walk so that stays true.
+ * L: the wing is on `side`, same depth, backs flush. mainWidth is the middle length plus the wing.
+ */
+export function loungeFromDrawnRun(input: {
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+  depth: number;
+  roomSign: number;
+  style: "I" | "L" | "U";
+  side?: "LEFT" | "RIGHT";
+  wing?: number;
+  height?: number;
+  partitionPanelThickness?: number;
+}): { params: LoungeParams; pose: LoungePose } {
+  const a0 = input.a;
+  const b0 = input.b;
+  const dx = b0.x - a0.x;
+  const dy = b0.y - a0.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) throw new Error("lounge back edge is too short");
+  const depth = input.depth;
+  if (!(depth > 0)) throw new Error("lounge depth must be positive");
+  const sign = input.roomSign < 0 ? -1 : 1;
+  let ux = dx / len;
+  let uy = dy / len;
+  let rx = uy;
+  let ry = -ux;
+  let left = a0;
+  let right = b0;
+  if (sign < 0) {
+    ux = -ux;
+    uy = -uy;
+    rx = -rx;
+    ry = -ry;
+    left = b0;
+    right = a0;
+  }
+  const rotZ = r2((Math.atan2(uy, ux) * 180) / Math.PI) || 0;
+  const H = asNum(input.height, 420);
+  const ppt = asNum(input.partitionPanelThickness, 18);
+  const frontLeft = {
+    x: r2(left.x + rx * depth),
+    y: r2(left.y + ry * depth),
+  };
+  if (input.style === "I") {
+    return {
+      params: {
+        style: "I_SHAPE", mainWidth: r2(len), mainDepth: r2(depth),
+        height: H, partitionPanelThickness: ppt,
+      },
+      pose: { x: frontLeft.x, y: frontLeft.y, z: 0, rotZ },
+    };
+  }
+  const wing = input.wing ?? 0;
+  if (!(wing > depth)) throw new Error("lounge return must extend past the middle front");
+  const side = input.side === "LEFT" ? "LEFT" : "RIGHT";
+  if (input.style === "U") {
+    return {
+      params: {
+        style: "U_SHAPE",
+        mainWidth: r2(len),
+        mainDepth: r2(wing),
+        lDepth: r2(depth),
+        height: H,
+        partitionPanelThickness: ppt,
+      },
+      pose: { x: r2(left.x + rx * wing), y: r2(left.y + ry * wing), z: 0, rotZ },
+    };
+  }
+  const origin = side === "LEFT"
+    ? { x: r2(left.x - ux * depth + rx * wing), y: r2(left.y - uy * depth + ry * wing) }
+    : { x: r2(left.x + rx * wing), y: r2(left.y + ry * wing) };
+  return {
+    params: {
+      style: "L_SHAPE",
+      mainWidth: r2(len),
+      mainDepth: r2(depth),
+      lWidth: r2(wing),
+      lDepth: r2(depth),
+      lPosition: side,
+      height: H,
+      partitionPanelThickness: ppt,
+    },
+    pose: { x: origin.x, y: origin.y, z: 0, rotZ },
+  };
 }
 
 /**

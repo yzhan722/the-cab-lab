@@ -269,10 +269,10 @@ const HINTS = {
   "slidingDoor.width": "Sliding door — pull to the other side of the opening · Tab / digits type W · click or Enter · right-click restarts",
   "slidingDoor.side": "Sliding door — move to the side of the wall the door hangs on: the leaf and the pelmet follow · click or Enter · right-click restarts",
   "slidingDoor.clear": "Sliding door — top clearance (= pelmet height), leaf overlap and leaf height (mm) · Enter creates · Esc / right-click cancels",
-  "lounge.p1": "Lounge — click the first point of the back edge (the wall the seat sits against) · 2 pts = I · 3 orthogonal = L · 3 colinear = Parallel · 4 = U · right-click leaves",
+  "lounge.p1": "Lounge — click the first point of the back edge (the wall the seat sits against) · 2 pts = I · 3 orthogonal = L · 3 colinear = Parallel · right-click leaves",
   "lounge.p2": "Lounge — click the next back-edge point (axis-aligned from the last) · Enter finishes an I-run · right-click restarts",
   "lounge.p3": "Lounge — click a third point (orthogonal = L, colinear = Parallel) or Enter to finish I · right-click restarts",
-  "lounge.p4": "Lounge — click a fourth point for U, or Enter to drop L / Parallel · right-click restarts",
+  "lounge.p4": "Lounge — Enter drops the run · right-click restarts",
 };
 const FIRST = { wall: "pt1", door: "end", lounge: "p1" };
 const DRAW_LOG = { wall: "wall.draw", door: "opening.draw", lounge: "lounge.place" };
@@ -760,6 +760,10 @@ function resolve(p) {
     return out;
   }
   if (tool.kind === "door") return resolveDoor(p);
+  if (tool.kind === "lounge") {
+    out.pt = { x: snap(p.x), y: snap(p.y) };
+    return out;
+  }
   if (tool.step === "pt1") {
     const e = nearestEdge(p, F.edges, tol, drawable);
     if (e) {
@@ -846,9 +850,9 @@ function clickLounge(p) {
   const pt = tool.pts.length ? axisAlign(tool.pts[tool.pts.length - 1], raw) : { x: raw.x, y: raw.y };
   const last = tool.pts[tool.pts.length - 1];
   if (last && Math.hypot(pt.x - last.x, pt.y - last.y) < 10) { flashTip(); return; }
+  if ((tool.pts || []).length >= 3) { flashTip(); return; }
   tool.pts.push(pt);
   log("lounge.place.point", { n: tool.pts.length, x: pt.x, y: pt.y, snap: cur.snap ? cur.snap.kind : null });
-  if (tool.pts.length >= 4) { commitLounge("click"); return; }
   tool.step = `p${tool.pts.length + 1}`;
 }
 
@@ -881,6 +885,7 @@ function drawLoungeTool() {
   for (const q of pts) dot(q.x, q.y, 5, C.point);
 }
 
+
 function click(p) {
   cur = resolve(p);
   if (!tool) {
@@ -892,7 +897,12 @@ function click(p) {
     return;
   }
   if (tool.kind === "door") { clickDoor(p); return; }
-  if (tool.kind === "lounge") { clickLounge(p); return; }
+  if (tool.kind === "lounge") {
+    clickLounge(p);
+    updateHint();
+    render();
+    return;
+  }
   if (tool.step === "pt1") {
     if (!cur.edge) return;
     tool.edge = cur.edge;
